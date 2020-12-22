@@ -1,0 +1,786 @@
+---
+title: "datamining-2020f homework_5"
+author: " 4 조" 
+date: '2020 11 24'
+output: html_document
+---
+
+##### 조원 : 1614335 통계학과 임나희, 1610812 통계학과 박혜영, 1611888 통계학과 박유희 **(최종 검토자 : 임나희)**
+
+#### 1. library load
+
+```{r library}
+# library load
+library(ISLR)
+library(FNN)
+library(glmnet)
+library(randomForest)
+library(gbm)
+```
+
+
+### 문제 8.10
+
+#### (a)
+```{r}
+data(Hitters)
+
+unknown=is.na(Hitters[,"Salary"])
+Hitters=Hitters[!unknown,]
+
+Hitters$Salary=log(Hitters$Salary)
+```
+
+
+Hitters 데이터셋에서 Salary가 NA값인 것을 제거하고, Salary 값을 로그변환 시킨다.
+
+
+#### (b)
+```{r}
+train=1:200
+Hitters.train=Hitters[train,]
+Hitters.test=Hitters[-train,]
+```
+
+
+Hitters 데이터들 중 처음 200개의 관측치는 train set으로 지정하였고, 나머지는 test set 으로 지정하였다.
+
+
+#### (c),(d)
+
+```{r}
+set.seed(1)
+
+hpTable.gb = expand.grid(
+  max.depth = c(3), 
+  shrnk = c(0.02, 0.1, 0.5)
+) 
+max.tree = 1000 ;
+# B = 1, 2, ...., 1000
+n.tree.seq = seq(from=1, to=max.tree, by=1)
+
+
+hpTableResults.gb.tr = NULL ;
+hpTableResults.gb.te = NULL ;
+
+for (i in 1:nrow(hpTable.gb) ) {
+	
+	# train
+	require(gbm)
+	mdl.gb = gbm(Salary ~ ., data=Hitters.train,
+	  distribution = "gaussian", 
+	  n.trees = max.tree, 
+	  shrinkage = hpTable.gb$shrnk[i], 
+	  interaction.depth = hpTable.gb$max.depth[i]
+	)
+	# measure errors (n.tree.seq measured simultaneously)
+	yhat.gbs.tr = predict(mdl.gb, newdata = Hitters.train, 
+		type="response", n.trees = n.tree.seq)
+	# yhat.gbs: n by 1000 matrix 
+
+	# calculate and store the errors (or performance measures)
+	for (j in 1:length(n.tree.seq)) {
+		n.tree = n.tree.seq[j]
+		yhat.gb_tr = yhat.gbs.tr[ ,j]
+		mseTemp.tr =  mean ( (Hitters.train$Salary - yhat.gb_tr)^2 )
+		
+		
+		resTemp.tr = data.frame( 
+			max.depth = hpTable.gb$max.depth[i],
+			shrnk = hpTable.gb$shrnk[i],
+			n.tree = n.tree,
+			mse.tr = mseTemp.tr)
+
+		hpTableResults.gb.tr = rbind(hpTableResults.gb.tr, resTemp.tr)
+	}
+	# measure errors (n.tree.seq measured simultaneously)
+	yhat.gbs.te = predict(mdl.gb, newdata = Hitters.test, 
+		type="response", n.trees = n.tree.seq)
+	# yhat.gbs: n by 1000 matrix 
+
+	# calculate and store the errors (or performance measures)
+	for (k in 1:length(n.tree.seq)) {
+		n.tree = n.tree.seq[k]
+		yhat.gb_te = yhat.gbs.te[ ,k]
+		mseTemp.te =  mean ( (Hitters.test$Salary - yhat.gb_te)^2 )
+		
+		resTemp.te = data.frame( 
+			max.depth = hpTable.gb$max.depth[i],
+			shrnk = hpTable.gb$shrnk[i],
+			n.tree = n.tree,
+			mse.te = mseTemp.te)
+
+		hpTableResults.gb.te = rbind(hpTableResults.gb.te, resTemp.te)
+	}
+}
+
+```
+
+
+그래디언트 부스팅을 적합하였다. 기본 학습기의 개수의 최대는 1000으로 설정하였다(B = 1, 2 , ...., 1000). 이 때, 축소계수 = 0.02, 0.1, 0.5로 각각 설정하고, interaction depth = 3으로 고정하였을때 나타나는 훈련세트 MSE 및 검증세트 MSE를 계산하였다. 
+
+
+```{r}
+
+train_0.02=hpTableResults.gb.tr[hpTableResults.gb.tr$shrnk==0.02,]
+train_0.1=hpTableResults.gb.tr[hpTableResults.gb.tr$shrnk==0.1,]
+train_0.5=hpTableResults.gb.tr[hpTableResults.gb.tr$shrnk==0.5,]
+
+test_0.02=hpTableResults.gb.te[hpTableResults.gb.te$shrnk==0.02,]
+test_0.1=hpTableResults.gb.te[hpTableResults.gb.te$shrnk==0.1,]
+test_0.5=hpTableResults.gb.te[hpTableResults.gb.te$shrnk==0.5,]
+
+plot(train_0.02$n.tree, train_0.02$mse.tr ,col="red",xlab='Number of Trees', 
+     ylab='Mean-squared Error', type='l')
+lines(train_0.1$n.tree, train_0.1$mse.tr, col="blue" )
+lines(train_0.5$n.tree, train_0.5$mse.tr, col="green" )
+
+lines(test_0.02$n.tree, test_0.02$mse.te, lty=2, col="red" )
+lines(test_0.1$n.tree, test_0.1$mse.te, lty=2, col="blue" )
+lines(test_0.5$n.tree, test_0.5$mse.te, lty=2, col="green" )
+legend("topright", 
+       c("Train", "Test", "epsilon = 0.02", "epsilon = 0.1", "epsilon = 0.5"), 
+       col = c("black", "black", "red", "blue", "green"), lty=c(1,2,1,1,1))
+
+```
+
+
+x축은 기본학습기용 나무의 개수로 하고, y축은 MSE로 한 그래프를 그렸다.
+
+축소계수 = 0.02, 0.1, 0.5로 각각 설정하고, interaction depth = 3으로 고정하였을때 나타나는 훈련세트 MSE 및 검증세트 MSE를 모두 나타내었다. 축소계수 = 0.02일 때, 빨간색으로, 축소계수 = 0.1일 때, 파란색으로,  축소계수 = 0.5일 때, 초록색으로 표시하였다. 
+
+훈련세트 MSE는 실선으로, 테스트세트 MSE는 점선으로 표시하였다.
+
+
+**훈련세트 MSE 그래프해석 : 기본학습기의 개수가 증가할 때, 훈련세트 MSE는 대체로 감소하는 추세를 보인다. 
+
+**테스트세트 MSE 그래프 해석 : 기본학습기의 개수가 증가할 때, 극초기엔 테스트세트 MSE가 잘 감소하고 있는 모습을 보인다. 하지만 어느정도 기본학습기의 개수가 적당히 많아졌을 때, 테스트세트 MSE가 낮아진 후, 테스트세트 MSE가 미세하게 증가하는 것을 볼 수 있다. 즉 트리가 많아질수록 성능이 계속 좋아지는 것이 아니라 성능이 좋아졌다가 다시 안 좋아지는 경향이 보인다. 왜냐하면 MSE값이 어느 정도 낮아져서 그래프에 가장 낮은 부분이 생긴다는 것은 그 쯤이면 잔차를 거의 다 설명한 것이다. 그렇지만 random error에 의해 잔차는 계속 발생할 수 밖에 없고 그 잔차들을 기본 학습기가 많아질수록 잔차들을 계속 설명하려 하다보니 과대적합이 발생하기 때문이다. 
+
+축소계수 = 0.02일 때(빨간색 점선) 테스트세트 MSE에 주목해본다. 기본학습기의 개수가 증가할 때, 축소계수 = 0.02일 때 테스트세트 MSE는 극초기엔 MSE가 낮아지는 속도가 축소계수가 더 큰(축소계수=0.1, 축소계수=0.5) 경우보다 느려보인다. 
+하지만 어느정도 기본학습기의 개수가 증가하면, 축소계수 = 0.02일 때 테스트세트 MSE가 상대적으로 급격히 낮아져 축소계수가 더 큰(축소계수=0.1, 축소계수=0.5) 경우보다 테스트세트 MSE가 더 낮아진다.
+
+따라서 일단 B는 크게, 축소계수는 작게 하였을 때, 그래디언트 부스팅의 성능이 보다 좋을 것이라는 직관을 얻을 수 있다.
+
+
+#### (e)
+```{r}
+# gbm
+set.seed(1)
+
+mses = rep(NA, 5)
+shrnk = c(0.02, 0.1, 0.5)
+
+for(i in 1:3){
+  obj.gbm = gbm(Salary ~ ., data=Hitters.train, 
+                shrinkage = shrnk[i],
+                n.trees = 1000, 
+                distribution = 'gaussian',
+                interaction.depth=3)
+  yhat.gbm.te = predict(object=obj.gbm, newdata=Hitters.test, n.trees=1000, type="response")
+  mses[i]=mean((Hitters.test$Salary - yhat.gbm.te)^2)
+}
+
+# linear regression
+obj.lm = lm(Salary ~ . , data=Hitters.train)
+yhat.lm = model.matrix(Salary ~., Hitters.test) %*% coef(obj.lm)
+mses[4]=mean((Hitters.test$Salary-yhat.lm)^2)
+
+# lasso
+x.train = model.matrix(Salary ~., Hitters.train)[,-1]
+y.train = Hitters.train$Salary
+x.test = model.matrix(Salary ~., Hitters.test)[,-1]
+y.test = Hitters.test$Salary
+obj.lasso = glmnet(x = x.train, y = y.train, family = "gaussian", alpha=1)
+yhat.lasso = cbind(1,x.test)%*%coef(obj.lasso)
+mses[5]=mean((y.test-yhat.lasso)^2)
+
+mses
+```
+
+그래디언트 부스팅을 적합한 결과 나오는 test MSE를 선형회귀 및 라쏘선형회귀를 적합하여 나타나는 test MSE를 비교하였다.
+
+처음 세개의 test MSE는 각각 축소계수가 0.02, 0.1, 0.5 일 때, 그래디언트 부스팅을 적합한 결과 나온 test MSE이다. 네번쨰 test MSE는 선형회귀를 수행하였을 때 나온 test MSE이다. 다섯번째 test MSE는 라쏘선형회귀를 적합하였을 때 나온 test MSE이다.
+
+결과를 보면 축소계수=0.02일 때 그래디언트 부스팅을 적합한 결과 나온 test MSE가 가장 작다는 것을 알 수 있다. 
+또한 선형회귀를 적합한 결과 나온 test MSE가 가장 크다는 것을 알 수 있다.
+
+
+#### (f)
+```{r}
+set.seed(1)
+
+gbm = gbm(Salary ~ ., data=Hitters.train, 
+          shrinkage = 0.02, n.trees = 1000, 
+          distribution = 'gaussian', interaction.depth=3)
+summary(gbm)
+```
+
+그래프 아래 값이 나온 표를 보면 CAtBat가 rel.inf 값을 26.7175799 가지므로 가장 중요한 변수라는 것을 알  수 있다. 
+
+#### (g)
+```{r}
+set.seed(1)
+
+p = ncol(Hitters.train) -1 
+obj.bag = randomForest(Salary ~ . , data=Hitters.train, mtry = p, importance=TRUE)
+yhat.bag = predict(object=obj.bag, newdata=Hitters.test, type="response")
+mean( (Hitters.test$Salary - yhat.bag)^2)
+```
+
+training data set에 트리배깅을 적합해보았다. 
+트리배깅을 적합하여 나온 test MSE는 0.2301184이다. 
+이는 트리배깅을 적합하여 나온 test MSE가 (e)에서 계산한 test MSE 중에 가장 작은 test MSE(축소계수=0.02일 때 그래디언트 부스팅을 적합한 결과 나온 test MSE)보다 작다는 것을 알 수 있다.
+
+
+### 추가문제 (풀이자: 박유희, 임나희, 박혜영)
+
+```{r}
+# Caravan2 dataset load
+load("Caravan2.Rdata")
+
+#print(head(Caravan2))
+#str(Caravan2)
+
+# 결측값 확인
+table(is.na(Caravan2))
+
+# dataset 나누기 
+df = Caravan2
+n = nrow(df)
+n.train = floor(n * 0.8) 
+set.seed(1)
+ind = sample.int(n)
+ind.train = ind[1:n.train] 
+ind.test = ind[ -(1:n.train)]
+df.train = df[ind.train, ]
+df.test = df[ind.test, ]
+```
+
+Carvan2데이터에 결측값이 있는지 확인하기 위해 table(is.na(Caravan2))를 실행한 결과 결측값이 없음을 확인하였다. 
+Carvan2의 80퍼센트는 train set, 20퍼센트는 test set으로 데이터를 정해준다.이 때 구한 train set는 df.train, test set은 df.test라고 칭하기로 한다.
+
+## Naive benchmark
+
+```{r}
+K = 5
+set.seed(1)
+n = nrow(df.train)
+idx = sample(1:n, size = n)
+mis.naive = rep(NA, 5)
+sen.naive = rep(NA, 5)
+spe.naive = rep(NA, 5)
+table.naive = matrix(rep(NA, 4), 2, 2)
+
+for(k in 1:K){
+  inx = idx[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  df.tr = df.train[-inx,]
+  df.val = df.train[inx,]
+  
+  y.train = df.tr[,86]
+  y.val = df.val[,86]
+  
+  yhat.naive=as.factor(rep(ifelse(sum(y.train=="Yes")
+                                      > sum(y.train=="No"), "Yes", "No"), length(y.val)))
+  
+  table.frame = data.frame(y.val, yhat.naive)
+  table.frame$y.val = ifelse(as.character(table.frame$y.val)=="Yes", 1, 0)
+  table.frame$yhat.naive = ifelse(as.character(table.frame$yhat.naive)=="Yes", 1, 0)
+  
+  yes.yes = nrow(table.frame[(table.frame$y.val==1) & (table.frame$yhat.naive==1),])
+  yes.no = nrow(table.frame[(table.frame$y.val==1) & (table.frame$yhat.naive==0),])
+  no.yes = nrow(table.frame[(table.frame$y.val==0) & (table.frame$yhat.naive==1),])
+  no.no = nrow(table.frame[(table.frame$y.val==0) & (table.frame$yhat.naive==0),])
+    
+  # 정오행렬
+  table.naive[1,1] = no.no
+  table.naive[1,2] = no.yes
+  table.naive[2,1] = yes.no
+  table.naive[2,2] = yes.yes
+  
+  # 오분류율
+  mis.naive[k] = mean(table.frame$yhat.naive != table.frame$y.val)
+  # 민감도
+  sen.naive[k] = table.naive[2,2]/(table.naive[2,1]+table.naive[2,2])
+  # 특이도
+  spe.naive[k] = table.naive[1,1]/(table.naive[1,1]+table.naive[1,2])
+}
+
+naive.val.error = c(mean(mis.naive), mean(sen.naive), mean(spe.naive))
+naive.val.error.names = c("오분류율", "민감도", "특이도")
+print(data.frame(Method = naive.val.error.names, ValErr_Err = naive.val.error))
+```
+
+5-fold cross validation을 하기 위해 앞에서 구한 df.train을 5-fold 로 나눈다. k=1,2,3,4,5일 때 구한 train과 val을 가지고 나이브 벤치마크를 구한다.5-fold 에서 구한 train set은 df.tr, validation set은 df.val이라 칭한다.df.tr에서 반응변수 Purchase만 가져온 데이터를 y.train, df.val에서 반응변수 Purchase만 가져온 데이터를 y.val이라고 한다.  나이브 벤치마크라는 것은 모든 yhat에 대해 training set의 다수 클래스를 대응하는 방법이다.따라서 y.train에서 값이 "Yes", "No"중 어느 것이 많은 것인지 구하여서 더 많은 개수를 가지는 값을 yhat으로 주면 된다.
+y.val과 yhat.naive를 가지고 데이터 프레임을 만들고 정오행렬을 만들기 위한 준비를 한다. 데이터 프레임의 y.val에서 "Yes"이면 1, "NO"이면 0을 부여한다.데이터 프레임의 yhat.naive에서 "Yes"이면 1, "No"이면 0을 부여한다.구한 yhat.naive 값을 가지고 y.val값과 비교하여 둘다 1인 경우, 둘 중 하나만 1인 경우, 둘 다 0인 경우를 나눠 구해준다. 그 후에 공식에 맞춰 각각 오분류율, 민감도, 특이도를 구한다. 구한 값을 보면 나이브 벤치마크의 오분류율은 0.5279279, 민감도는 0.2000000, 특이도는 0.8000000라는 것을 알 수 있다. 
+
+## Knn
+
+```{r}
+K = 5
+set.seed(1)
+n = nrow(df.train)
+idx = sample(1:n, size = n)
+K_knn = 30
+mis.knn = rep(NA, K_knn)
+spe.knn = rep(NA, K_knn)
+sen.knn = rep(NA, K_knn)
+k_fold.mis.knn = NULL
+k_fold.spe.knn = NULL
+k_fold.sen.knn = NULL
+
+for (k in 1:K){
+  
+  inx = idx[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  df.tr = df.train[-inx,]
+  df.val = df.train[inx,]
+  
+  x.train = df.tr[,-86]
+  y.train = df.tr$Purchase
+  x.val = df.val[,-86]
+  y.val = df.val$Purchase
+
+  for (g in 1:K_knn){
+    
+    yhat.knn = knn(train=as.matrix(x.train), test=as.matrix(x.val), cl=y.train, k=g)
+    
+    table.knn = table(y.val, yhat.knn)  
+    
+    # 오분류율
+    mis.knn[g] = mean(yhat.knn != y.val)
+    # 민감도
+    sen.knn[g] = table.knn[2,2]/(table.knn[2,1]+table.knn[2,2])
+    # 특이도
+    spe.knn[g] = table.knn[1,1]/(table.knn[1,1]+table.knn[1,2])
+  }
+  
+  k_fold.mis.knn = rbind(k_fold.mis.knn, mis.knn)
+  k_fold.sen.knn = rbind(k_fold.sen.knn, sen.knn)
+  k_fold.spe.knn = rbind(k_fold.spe.knn, spe.knn)
+}
+
+mis.knn.all =  apply(k_fold.mis.knn, 2, mean)
+sen.knn.all = apply(k_fold.sen.knn, 2, mean)
+spe.knn.all = apply(k_fold.spe.knn, 2, mean)
+
+# validation error
+par(mfrow=c(1,3)) 
+plot(x=1:K_knn, y=mis.knn.all, col='red', pch=16, main='misclassification error', 
+     xlab = "k", ylab = "오분류율", cex=0.5)
+plot(x=1:K_knn, y=sen.knn.all, col='blue', pch=16, main='sensitivity', 
+     xlab = "k", ylab = "민감도", cex=0.5)
+plot(x=1:K_knn, y=spe.knn.all, col='darkgreen', pch=16, main='specificity', 
+     xlab = "k", ylab = "특이도", cex=0.5)
+
+# 오분류율 기준
+k.optimal_mis = (1:K_knn)[which.min(mis.knn.all)]
+mis.knn.all[which.min(mis.knn.all)]
+k.optimal_mis
+
+# 민감도 기준
+k.optimal_sen = (1:K_knn)[which.max(sen.knn.all)]
+sen.knn.all[which.max(sen.knn.all)]
+k.optimal_sen
+
+# 특이도 기준
+k.optimal_spe = (1:K_knn)[which.max(spe.knn.all)]
+spe.knn.all[which.max(spe.knn.all)]
+k.optimal_spe
+```
+
+5-fold cross validation을 하기 위해 앞에서 구한 df.train을 5-fold 로 나눈다. k=1,2,3,4,5일 때 구한 train과 val을 가지고 knn을 한다. 5-fold 에서 구한 train set은 df.tr, validation set은 df.val이라 칭한다.df.tr에서 반응변수 Purchase만 가져온 데이터를 y.train, 반응변수를 제외한 나머지 데이터를 x.train이라 한다. df.val에서 반응변수 Purchase만 가져온 데이터를 y.val, 반응변수를 제외한 나머지 데이터를 x.val이라고 힌다.knn을 적용시켜서 yhat.knn값을 구하였고 이와 y.val을 이용하여 정오행렬을 만들고 knn의 오분류율, 민감도, 특이도를 구하였다. knn의 k마다 오류값이 여러개 나와 각각 평균을 내어 구해주었다. 
+오분류율은 작을수록 좋으므로 나온 평균 값들 중 제일 작은 것을 골라 0.3261261라는 결과가 나왔다. 그리고 k=15일 때 오분류율이 제일 작다는 것을 알 수 있다. 
+민감도는 클수록 좋으므로 나온 평균 값들 중 제일 큰 것을 골라 0.682824라는 결과가 나왔다. 그리고 k=27일 때 민감도가 제일 크다는 것으 알 수 있다.
+특이도는 클수록 좋으므로 나온 평균 값들 중 제일 큰 것을 골라 0.8406038라는 결과가 나왔다. 그리고 k=2일 때 특이도가 제일 크다는 것을 알 수 있다. 
+
+이 값들은 명시되어 있는 그래프에서도 확인이 가능하다.
+
+## Logistic Lasso Regression
+
+```{r}
+grid = 2^seq(from=50, to=-49, length=100)
+
+K = 5
+set.seed(1)
+n = nrow(df.train)
+idx = sample(1:n, size = n)
+mis.lasso = rep(NA, length(grid))
+spe.lasso = rep(NA, length(grid))
+sen.lasso = rep(NA, length(grid))
+k_fold.mis.lasso = NULL
+k_fold.spe.lasso = NULL
+k_fold.sen.lasso = NULL
+table.lasso = matrix(rep(NA, 4), 2, 2)
+
+for (k in 1:K){
+  
+  inx = idx[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  df.tr = df.train[-inx,]
+  df.val = df.train[inx,]
+  
+  x.train = as.matrix(df.tr[,-86])
+  y.train = as.matrix(df.tr$Purchase)
+  x.val = df.val[,-86]
+  y.val = df.val$Purchase
+  
+  obj.lasso = glmnet(x = x.train, y = y.train, family = "binomial", alpha=1, lambda = grid)
+  
+  for (g in 1:length(grid)){
+    
+    yhat.lasso = as.matrix(cbind(1, x.val)) %*% coef(obj.lasso)[ ,g] 
+    yhat.prob = exp(yhat.lasso)/(1+exp(yhat.lasso))
+    yhat.pred = as.factor(ifelse(yhat.prob > 0.5, "Yes", "No"))
+    
+    tf.lasso = data.frame(y.val, yhat.pred)
+    tf.lasso$y.val = ifelse(as.character(tf.lasso$y.val)=="Yes", 1, 0)
+    tf.lasso$yhat.pred = ifelse(as.character(tf.lasso$yhat.pred)=="Yes", 1, 0)
+  
+    yes.yes = nrow(tf.lasso[(tf.lasso$y.val==1) & (tf.lasso$yhat.pred==1),])
+    yes.no = nrow(tf.lasso[(tf.lasso$y.val==1) & (tf.lasso$yhat.pred==0),])
+    no.yes = nrow(tf.lasso[(tf.lasso$y.val==0) & (tf.lasso$yhat.pred==1),])
+    no.no = nrow(tf.lasso[(tf.lasso$y.val==0) & (tf.lasso$yhat.pred==0),])
+    
+    # 정오행렬
+    table.lasso[1,1] = no.no
+    table.lasso[1,2] = no.yes
+    table.lasso[2,1] = yes.no
+    table.lasso[2,2] = yes.yes
+    
+    # 오분류율
+    mis.lasso[g] = mean(tf.lasso$yhat.pred != tf.lasso$y.val)
+    # 민감도
+    sen.lasso[g] = table.lasso[2,2]/(table.lasso[2,1]+table.lasso[2,2])
+    # 특이도
+    spe.lasso[g] = table.lasso[1,1]/(table.lasso[1,1]+table.lasso[1,2])
+  }
+  k_fold.mis.lasso = rbind(k_fold.mis.lasso, mis.lasso)
+  k_fold.sen.lasso = rbind(k_fold.sen.lasso, sen.lasso)
+  k_fold.spe.lasso = rbind(k_fold.spe.lasso, spe.lasso)
+}
+
+mis.lasso.all = apply(k_fold.mis.lasso, 2, mean)
+sen.lasso.all = apply(k_fold.sen.lasso, 2, mean)
+spe.lasso.all = apply(k_fold.spe.lasso, 2, mean)
+
+# log2()로 스케일링
+par(mfrow=c(1,3)) 
+plot(x=log2(obj.lasso$lambda), y=mis.lasso.all, col='red', pch=16, 
+     main='misclassification error', xlab = "lambda", ylab = "오분류율", cex=0.5)
+plot(x=log2(obj.lasso$lambda), y=sen.lasso.all, col='blue', pch=16, main='sensitivity', 
+     xlab = "lambda", ylab = "민감도", cex=0.5)
+plot(x=log2(obj.lasso$lambda), y=spe.lasso.all, col='darkgreen', pch=16, main='specificity', 
+     xlab = "lambda", ylab = "특이도", cex=0.5)
+
+# 오분류율 기준
+lambda.optimal_mis = grid[which.min(mis.lasso.all)]
+mis.lasso.all[which.min(mis.lasso.all)]
+lambda.optimal_mis
+
+# 민감도 기준
+lambda.optimal_sen = grid[which.max(sen.lasso.all)]
+sen.lasso.all[which.max(sen.lasso.all)]
+lambda.optimal_sen
+
+# 특이도 기준
+lambda.optimal_spe = grid[which.max(spe.lasso.all)]
+spe.lasso.all[which.max(spe.lasso.all)]
+lambda.optimal_spe
+```
+
+5-fold cross validation을 하기 위해 앞에서 구한 df.train을 5-fold 로 나눈다. k=1,2,3,4,5일 때 구한 train과 val을 가지고 로지스틱 라쏘 선형회귀를 한다. 5-fold 에서 구한 train set은 df.tr, validation set은 df.val이라 칭한다.df.tr에서 반응변수 Purchase만 가져온 데이터를 y.train, 반응변수를 제외한 나머지 데이터를 x.train이라 한다. df.val에서 반응변수 Purchase만 가져온 데이터를 y.val, 반응변수를 제외한 나머지 데이터를 x.val이라고 힌다. 라쏘 회귀를 하기 위하여 grid=2^seq(from=50, to=-49, length=100)로 정해 주었다. 
+ yhat.lasso를 구한 뒤 Purchase는 질적 변수이므로 라쏘 로지스틱을 이용해야 한다. 따라서 exp(yhat.lasso)/(1+exp(yhat.lasso))를 이용해서 확률을 구하고 cutoff=0.5로 하여 확률이 0.5보다 크면 1, 작으면 0의 값을 가지는 것으로 한다. 여기서 추정한 yhat값과 y.val값을 비교하여 둘 다 1인 경우, 둘 중 하나만 1인 경우, 둘 다 0인 경우의 값을 구한다. 그 뒤 공식에 맞춰 오분류율, 민감도, 특이도를 구한다. grid 값 하나마다 오류들이 여러개 나오므로 이를 각각 평균내서 이용한다. 
+ 오뷴류율은 제일 작은 평균값이 0.3243243이고 이에 해당하는 람다 값은 0.0078125이다. 
+ 민감도는 가장 큰 평균값이 0.7163972이고 이에 해당하는 람다 값은 0.0625이다. 
+ 특이도는 가장 큰 평균값이 0.8이고 이에 해당하는 람다 값은 1.1259e+15이다. 
+ 
+ 각각의 람다마다 나오는 오류값들은 그래프를 통해 확인이 가능하다. 
+ 
+## RandomForest
+
+```{r}
+K = 5
+max.tree = 1000
+n.tree.seq.rf = seq(from=10, to=max.tree, by=40)
+set.seed(1)
+n = nrow(df.train)
+idx = sample(1:n, size = n)
+mis.rf = rep(NA, length(n.tree.seq.rf))
+spe.rf = rep(NA, length(n.tree.seq.rf))
+sen.rf = rep(NA, length(n.tree.seq.rf))
+k_fold.mis.rf = NULL
+k_fold.spe.rf = NULL
+k_fold.sen.rf = NULL
+p = ncol(df.train) -1
+
+for (k in 1:K){
+  
+  inx = idx[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  df.tr = df.train[-inx,]
+  df.val = df.train[inx,]
+  val.y = df.val$Purchase
+  
+  for (i in 1:length(n.tree.seq.rf)){
+    
+    obj.rf = randomForest(Purchase ~ . , data=df.tr, mtry = sqrt(p), ntree=n.tree.seq.rf[i], importance=TRUE)
+    yhat.rf = predict(object=obj.rf, newdata=df.val, type="class")
+ 
+    table.rf = table(val.y, yhat.rf)
+    
+    # 오분류율
+    mis.rf[i] = mean(as.character(val.y) != as.character(yhat.rf))
+    # 민감도
+    sen.rf[i] = table.rf[2,2]/(table.rf[2,1]+table.rf[2,2])
+    # 특이도
+    spe.rf[i] = table.rf[1,1]/(table.rf[1,1]+table.rf[1,2])
+  }
+  k_fold.mis.rf = rbind(k_fold.mis.rf, mis.rf)
+  k_fold.sen.rf = rbind(k_fold.sen.rf, sen.rf)
+  k_fold.spe.rf = rbind(k_fold.spe.rf, spe.rf)
+}
+
+mis.rf.all = apply(k_fold.mis.rf, 2, mean)
+sen.rf.all = apply(k_fold.sen.rf, 2, mean)
+spe.rf.all = apply(k_fold.spe.rf, 2, mean)
+
+par(mfrow=c(1,3)) 
+plot(x=n.tree.seq.rf, y=mis.rf.all, col='red', pch=16, main='misclassification error', 
+     xlab = "Number of Trees", ylab = "오분류율", cex=0.5)
+plot(x=n.tree.seq.rf, y=sen.rf.all, col='blue', pch=16, main='sensitivity', 
+     xlab = "Number of Trees", ylab = "민감도", cex=0.5)
+plot(x=n.tree.seq.rf, y=spe.rf.all, col='darkgreen', pch=16, main='specificity', 
+     xlab = "Number of Trees", ylab = "특이도", cex=0.5)
+
+# 오분류율 기준
+rf.optimal_mis = n.tree.seq.rf[which.min(mis.rf.all)]
+mis.rf.all[which.min(mis.rf.all)]
+rf.optimal_mis
+
+# 민감도 기준
+rf.optimal_sen = n.tree.seq.rf[which.max(sen.rf.all)]
+sen.rf.all[which.max(sen.rf.all)]
+rf.optimal_sen
+
+# 특이도 기준
+rf.optimal_spe = n.tree.seq.rf[which.max(spe.rf.all)]
+spe.rf.all[which.max(spe.rf.all)]
+rf.optimal_spe
+```
+
+5-fold cross validation을 하기 위해 앞에서 구한 df.train을 5-fold 로 나눈다. k=1,2,3,4,5일 때 구한 train과 val을 가지고 랜덤 포레스트를 한다. 5-fold 에서 구한 train set은 df.tr, validation set은 df.val이라 칭한다. df.val에서 반응변수 Purchase만 가져온 데이터를 val.y이라고 힌다. 각 k마다 ntree=10,50,90,...를 해서 랜덤포레스트를 적용시키고 여기서 구한 yhat의 값과 val.y를 비교하여 정오행렬을 만들었다. 이를 이용하여 오분류율, 민감도, 특이도를 구하였다.각 k마다 오분류율, 민감도, 특이도가 여러개 나오므로 평균내서 이용한다. 
+결과값을 보면 오분류율은 제일 작은 평균 값이 0.3225225이고 이에 해당하는 ntree는 250이다.
+민감도는 제일 큰 평균값이 0.6615185이고 이에 해당하는 ntree는 970이다.
+특이도는 제일 큰 평균값이 0.7116463이고 이에 해당하는 ntree는 50이다. 
+
+각각의 ntree에 해당하는 오분류율, 민감도, 특이도는 그래프를 통해 확인이 가능하다.
+
+## Gradient Boosting
+
+```{r}
+hpTable.gb = expand.grid(
+  max.depth = c(1, 2, 3), 
+  shrnk = c(0.005, 0.025, 0.125)
+) 
+max.tree = 1000 ;
+# B = 10, 20, ...., 1000
+n.tree.seq = seq(from=10, to=max.tree, by=10)
+table.boost = matrix(rep(NA, 4), 2, 2)
+K = 5
+set.seed(1)
+n = nrow(df.train)
+idx = sample(1:n, size = n)
+
+hpTableResults.gb = NULL ;
+err = NULL ;
+
+for (k in 1:K){
+  inx = idx[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  df.tr = df.train[-inx,]
+  df.val = df.train[inx,]
+  y.val = df.val$Purchase
+  df.tr$Purchase = ifelse(as.character(df.tr$Purchase)=="Yes", 1, 0)
+  y.val = ifelse(as.character(y.val)=="Yes", 1, 0)
+  
+  for (i in 1:nrow(hpTable.gb) ) {
+    print(Sys.time())
+    print(i)
+    # train
+    require(gbm)
+    
+    mdl.gb = gbm(Purchase ~ ., data=df.tr,
+                 distribution = "bernoulli", 
+                 n.trees = max.tree, 
+                 shrinkage = hpTable.gb$shrnk[i], 
+                 interaction.depth = hpTable.gb$max.depth[i])
+    yhat.gbs = predict(mdl.gb, newdata = df.val, 
+                       type="response", n.tree = n.tree.seq)
+    
+    for (j in 1:length(n.tree.seq)) {
+      n.tree = n.tree.seq[j]
+      yhat.gb = yhat.gbs[ ,j]
+      yhat.gb = ifelse(yhat.gb > 0.5, 1, 0)
+      
+      tf.boost = data.frame(y.val, yhat.gb)
+      
+      yes.yes = nrow(tf.boost[(tf.boost$y.val==1) & (tf.boost$yhat.gb==1),])
+      yes.no = nrow(tf.boost[(tf.boost$y.val==1) & (tf.boost$yhat.gb==0),])
+      no.yes = nrow(tf.boost[(tf.boost$y.val==0) & (tf.boost$yhat.gb==1),])
+      no.no = nrow(tf.boost[(tf.boost$y.val==0) & (tf.boost$yhat.gb==0),])
+      
+      # 정오행렬
+      table.boost[1,1] = no.no
+      table.boost[1,2] = no.yes
+      table.boost[2,1] = yes.no
+      table.boost[2,2] = yes.yes
+      
+      # 오분류율
+      mis.boost = mean(tf.boost$yhat.gb != tf.boost$y.val)
+      # 민감도
+      sen.boost = table.boost[2,2]/(table.boost[2,1]+table.boost[2,2])
+      # 특이도
+      spe.boost = table.boost[1,1]/(table.boost[1,1]+table.boost[1,2])
+      
+      resTemp = data.frame( 
+        k = k,
+        max.depth = hpTable.gb$max.depth[i],
+        shrnk = hpTable.gb$shrnk[i],
+        n.tree = n.tree,
+        mis.gbm = mis.boost,
+        sen.gbm = sen.boost,
+        spe.gbm = spe.boost
+        )
+      
+      hpTableResults.gb = rbind(hpTableResults.gb, resTemp)
+    }
+  }
+}
+
+err =  hpTableResults.gb
+k_1_data = err[err$k==1,];k_2_data = err[err$k==2,];k_3_data = err[err$k==3,];k_4_data = err[err$k==4,];k_5_data = err[err$k==5,]
+total = k_1_data[, -1]
+total$mis.gbm = (k_1_data$mis.gbm + k_2_data$mis.gbm + k_3_data$mis.gbm + k_4_data$mis.gbm + k_5_data$mis.gbm)/5
+total$sen.gbm = (k_1_data$sen.gbm + k_2_data$sen.gbm + k_3_data$sen.gbm + k_4_data$sen.gbm + k_5_data$sen.gbm)/5
+total$spe.gbm = (k_1_data$spe.gbm + k_2_data$spe.gbm + k_3_data$spe.gbm + k_4_data$spe.gbm + k_5_data$spe.gbm)/5
+
+total.mis = total[ order(total$mis.gbm, decreasing=FALSE) , ]
+total.sen = total[ order(total$sen.gbm, decreasing=TRUE) , ]
+total.spe = total[ order(total$spe.gbm, decreasing=TRUE) , ]
+
+head(total.mis)
+head(total.sen)
+head(total.spe)
+```
+
+
+5-fold cross validation을 하기 위해 앞에서 구한 df.train을 5-fold 로 나눈다. k=1,2,3,4,5일 때 구한 train과 val을 가지고 그래디언트 부스팅을 한다. 5-fold 에서 구한 train set은 df.tr, validation set은 df.val이라 칭한다. df.val에서 반응변수 Purchase만 가져온 데이터를 y.val이라고 힌다. 그래디언트 부스팅에서 depth는 1,2,3으로 하고 shrink는 0.005, 0.025, 0.125로 하기로 한다. ntree는 10,20,30,...,1000 까지이다. df.tr의 Purchase 값이 "Yes", "No"이므로 1,0에 해당하는 값으로 바꾸고 그래디언트 부스팅을 하여 yhat.gbs를 예측한다.
+yhat.gbs를 가지고 각각의 ntree를 적용시켜서 yhat.gb를 만든 뒤 질적 변수이므로 cutoff=0.5보다 크면 1, 아니면 0을 부여한다.
+여기서 구한 y.val과 yhat.gb를 가지고 둘 다 1인 경우, 둘 중 하나만 1인 경우, 둘 다 0인 경우를 구해서 오뷴류율, 민감도, 특이도를 계산한다. 
+
+계산한 각각의 오류들의 앞부분 값들만 보면 위에 나와있는 표와 같다. 각 테이블 제일 위에 나타난 조합이 최적의 조합이라 판단했다.
+
+## 모델 선정
+
+```{r}
+my.mis = c(mean(mis.naive), mis.knn.all[which.min(mis.knn.all)], mis.lasso.all[which.min(mis.lasso.all)],
+           mis.rf.all[which.min(mis.rf.all)], total.mis[1, 4])
+my.names.mis = c("Naive benchmark", sprintf("kNN (k.opt=%d)", k.optimal_mis), 
+                 sprintf("Logistic Ridge regression (lam.opt=%.10f)", lambda.optimal_mis),
+                 sprintf("RandomForestsqrt (mtry=%d, n.tr=%d)", 9, rf.optimal_mis),
+                 sprintf("Gradient boosting (dep.opt=%d, shr.opt=%.3f, n.tr=%d)", total.mis[1,1], total.mis[1,2], total.mis[1,3]))
+
+my.sen = c(mean(sen.naive), sen.knn.all[which.max(sen.knn.all)], sen.lasso.all[which.max(sen.lasso.all)],
+           sen.rf.all[which.max(sen.rf.all)], total.sen[1,5])
+my.names.sen = c("Naive benchmark", sprintf("kNN (k.opt=%d)", k.optimal_sen),
+                 sprintf("Logistic Ridge regression (lam.opt=%.10f)", lambda.optimal_sen),
+                 sprintf("RandomForestsqrt (mtry=%d, n.tr=%d)", 9, rf.optimal_sen),
+                 sprintf("Gradient boosting (dep.opt=%d, shr.opt=%.3f, n.tr=%d)", total.sen[1,1], total.sen[1,2], total.sen[1,3]))
+
+my.spe = c(mean(spe.naive), spe.knn.all[which.max(spe.knn.all)], spe.lasso.all[which.max(spe.lasso.all)],
+           spe.rf.all[which.max(spe.rf.all)], total.spe[1,6])
+my.names.spe = c("Naive benchmark", sprintf("kNN (k.opt=%d)", k.optimal_spe),
+                 sprintf("Logistic Ridge regression (lam.opt=%.10f)", lambda.optimal_spe),
+                 sprintf("RandomForestsqrt (mtry=%d, n.tr=%d)", 9, rf.optimal_spe),
+                 sprintf("Gradient boosting (dep.opt=%d, shr.opt=%.3f, n.tr=%d)", total.spe[1,1], total.spe[1,2], total.spe[1,3]))
+
+# 표로 제시
+print(data.frame( Method = my.names.mis, misclassification_error = my.mis))
+print(data.frame( Method = my.names.sen, sensitivity = my.sen))
+print(data.frame( Method = my.names.spe, specificity = my.spe))
+```
+
+이 때까지 구한 나이브 벤치마크, knn, 로지스틱 라쏘 선형회귀, 랜덤 포레스트, 그래디언트 부스팅에서 나온 각각 성능이 좋은 초모수 조합으로 오분류율, 민감도, 특이도를 정리하여 표로 만들었다.
+
+##### final model 및 test-set error
+
+```{r}
+# randomforest
+
+set.seed(1)
+p = ncol(df.train) -1
+
+obj.rf = randomForest(Purchase ~ . , data=df.train, mtry = sqrt(p), ntree=250, importance=TRUE)
+yhat.rf = predict(object=obj.rf, newdata=df.test, type="class")
+table.rf = table(df.test$Purchase, yhat.rf)
+
+# 오분류율
+mis.rf.final = mean(as.character(df.test$Purchase) != as.character(yhat.rf))
+# 민감도
+sen.rf.final = table.rf[2,2]/(table.rf[2,1]+table.rf[2,2])
+# 특이도
+spe.rf.final = table.rf[1,1]/(table.rf[1,1]+table.rf[1,2])
+
+
+final.error = c(mis.rf.final, sen.rf.final, spe.rf.final)
+val.error.names = c("오분류율", "민감도", "특이도")
+print(data.frame(Method = val.error.names, TestErr_Err = final.error))
+
+
+# gradient boosting
+
+set.seed(1)
+table.boost.final = matrix(rep(NA, 4), 2, 2)
+
+df.train$Purchase = ifelse(as.character(df.train$Purchase)=="Yes", 1, 0)
+df.test$Purchase = ifelse(as.character(df.test$Purchase)=="Yes", 1, 0)
+
+mdl.gb = gbm(Purchase ~ ., data=df.train,
+             distribution = "bernoulli", 
+             n.trees = 330, 
+             shrinkage = 0.005, 
+             interaction.depth = 3)
+yhat.gb = predict(mdl.gb, newdata = df.test, 
+                   type="response", n.tree = 330)
+
+yhat.gb = ifelse(yhat.gb > 0.5, 1, 0)
+
+y.test = df.test$Purchase
+tf.final = data.frame(y.test, yhat.gb)
+
+yes.yes = nrow(tf.final[(tf.final$y.test==1) & (tf.final$yhat.gb==1),])
+yes.no = nrow(tf.final[(tf.final$y.test==1) & (tf.final$yhat.gb==0),])
+no.yes = nrow(tf.final[(tf.final$y.test==0) & (tf.final$yhat.gb==1),])
+no.no = nrow(tf.final[(tf.final$y.test==0) & (tf.final$yhat.gb==0),])
+
+# 정오행렬
+table.boost.final[1,1] = no.no
+table.boost.final[1,2] = no.yes
+table.boost.final[2,1] = yes.no
+table.boost.final[2,2] = yes.yes
+
+# 오분류율
+mis.boost.final = mean(tf.final$yhat.gb != tf.final$y.test)
+# 민감도
+sen.boost.final = table.boost.final[2,2]/(table.boost.final[2,1]+table.boost.final[2,2])
+# 특이도
+spe.boost.final = table.boost.final[1,1]/(table.boost.final[1,1]+table.boost.final[1,2])
+
+final.error.boost = c(mis.boost.final, sen.boost.final, spe.boost.final)
+final.error.names.boost = c("오분류율", "민감도", "특이도")
+print(data.frame(Method = final.error.boost, TestErr_Err = final.error.names.boost))
+
+```
+
+최종모형 2개는 랜덤 포레스트와 그래디언트 부스팅을 결정하였다. 민감도와 특이도는 상황에 따라 값이 큰 것이 좋을 수도 있고 아닐 수도 있으므로 오류측도는 오분류율을 사용하기로 한다. 
+랜덤 포레스트를 먼저 보자.
+위에 문제에서 랜덤 포레스트의 오분류율은 ntree=250일 때 값이 제일 작았다. 이를 이용하여 랜덤 포레스트를 적합시켜 yhat을 구하고 정오행렬을 만들어 test set error를 구한다. 결과값을 보면 오분류율은 0.3714286, 민감도는  0.6410256, 특이도는 0.6129032가 나온다.
+
+이제 그래디언트 부스팅을 보자.
+위에 문제에서 그래디언트 부스팅은 ntree=330, shrink=0.005, depth=3일 때 오분류율이 제일 작게 나왔다. 이를 이용하여 그래디언트 부스팅을 적합시키면 오분류율은 0.3500000, 민감도는 0.6794872  , 특이도는  0.6129032가 나온다. 
