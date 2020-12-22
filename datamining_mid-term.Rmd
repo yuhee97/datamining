@@ -1,0 +1,830 @@
+---
+title: "datamining-2020f homework_중간대체과제"
+author: " 4 조 박유희" 
+date: '2020 10 25'
+output: html_document
+---
+
+####  1611888 통계학과 박유희
+
+#### library load
+
+```{r library}
+# library load
+library(glmnet)
+library(FNN)
+library(quantreg)
+```
+
+필요한 라이브러리를 로드했습니다.
+
+##### 1).
+
+
+```{r}
+load("Cheongpa2.Rdata")
+print(head(Cheongpa2))
+str(Cheongpa2)
+```
+
+데이터를 로드하여 변수 및 타입을 살펴봤습니다.
+
+```{r}
+# 데이터셋 분류 train, test, validation 6:2:2
+
+y = Cheongpa2$Today
+x = Cheongpa2[, 3:9]
+Date = Cheongpa2$Date
+n = nrow(Cheongpa2)
+
+
+# 시계열 데이터이기 때문에 random하게 train, validation, test dataset을 나누는 게 아닌 날짜 순에 맞춰 6:2:2로 할당했습니다.
+
+ratio.train = 0.6 ; ratio.val = 0.2
+n.train = floor(n * ratio.train)
+n.val =  floor(n * ratio.val)
+n.test = n - n.train - n.val
+
+ind.train = 1:n.train
+ind.val = (n.train + 1):(n.train + n.val)
+ind.test = (n.train + n.val + 1):n
+
+x.train = x[ ind.train , ]
+y.train = y[ ind.train ]
+Date.train = Date[ ind.train ]
+x.val = x[ ind.val , ]
+y.val = y[ ind.val ]
+Date.val = Date[ ind.val ]
+x.test = x[ ind.test , ]
+y.test = y[ ind.test ]
+Date.test = Date[ ind.test]
+
+nrow(x.train); nrow(x.val);  nrow(x.test)
+
+```
+
+데이터를 train, validation, test로 6:2:2 비율로 분배한 후, 각각의 데이터의 행의 개수를 살펴봤습니다.
+
+적절하게 배분된 것을 확인할 수 있었습니다.
+
+```{r}
+# naive benchmark(평균)
+
+yhat.naive = mean(y.train)
+
+# rmse
+rmse.naive = sqrt(mean((y.val-yhat.naive)^2))
+# mae
+mae.naive = mean(abs(y.val-yhat.naive))
+# me
+me.naive = mean(y.val-yhat.naive)
+
+
+print(rmse.naive)
+print(mae.naive)
+print(me.naive)
+
+# [1] 5010.303
+# [2] 4766.706
+# [3] 4713.554
+```
+
+RMSE, MAE, ME 오류 측도를 이용했습니다.
+
+RMSE는 sqrt(mean((y-yhat)^2)) 식으로 구할 수 있습니다.
+
+RMSE는 MSE에 제곱근을 씌운 오류 측도입니다.
+
+MAE는 mean(abs(y-yhat)) 식으로 구할 수 있습니다.
+
+MAE는 실제값과 추정값의 차이를 절대값을 씌어 평균을 구하는 방식입니다.
+
+ME는 mean(y-yhat) 식으로 구할 수 있습니다.
+
+ME는 실제값과 추정값 차이의 평균을 구하는 방식입니다.
+
+여기서 y는 실제값, yhat은 추정값입니다.
+
+RMSE 값은 5010.303, MAE 값은 4766.706, ME 값은 4713.554임을 확인했습니다.
+
+오류 측도 값들이 큰 편입니다.
+
+
+```{r}
+# 표로 제시
+naive.val.error = c(rmse.naive, mae.naive, me.naive)
+naive.val.error.names = c("RMSE", "MAE", "ME")
+
+print(data.frame(Method = naive.val.error.names, ValErr_Err = naive.val.error))
+```
+
+표로 다시 한 번 정리하여 오류 측도 값들을 살펴봤습니다.
+
+```{r}
+# y와 yhat 비교
+plot(x=Date.val, y=y.val, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+abline(h=yhat.naive, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 naive benchmark(평균)로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 실제값과 추정값이 크다는 사실을 직관적으로 파악할 수 있었습니다.
+
+다른 모델도 살펴봐야겠지만 적절치 못한 모델이라고 판단됩니다.
+
+```{r}
+# k-최근접이웃
+
+K = 30
+rmses.knn = rep(NA, K)
+maes.knn = rep(NA, K)
+mes.knn = rep(NA, K)
+for (g in 1:K) {
+  yhat.knn = knn.reg(train=as.matrix(x.train), test=as.matrix(x.val), y=y.train, k=g)$pred
+  # rmse
+  rmses.knn[g] = sqrt(mean((y.val-yhat.knn)^2))
+  # mae
+  maes.knn[g] = mean(abs(y.val-yhat.knn))
+  # me
+  mes.knn[g] = mean(y.val-yhat.knn)
+}
+```
+
+k = 1,....., 30의 그리드를 비교하기 위한 코드입니다.
+
+```{r}
+# validation error
+par(mfrow=c(1,3)) 
+plot(x=1:K, y=rmses.knn, col='red', pch=16, main='RMSE')
+plot(x=1:K, y=maes.knn, col='blue', pch=16, main='MAE')
+plot(x=1:K, y=mes.knn, col='darkgreen', pch=16, main='ME')
+```
+
+1~30인 k의 grid를 고려했을 때 각각의 RMSE, MAE, ME 값을 살펴보기 위한 그래프입니다.
+
+
+```{r}
+# rmse 기준
+k.optimal_rmse = (1:K)[which.min(rmses.knn)]
+rmses.knn[which.min(rmses.knn)]
+print(k.optimal_rmse)
+# [1] 1459.064
+# k=7
+
+# mae 기준
+k.optimal_mae = (1:K)[which.min(maes.knn)]
+maes.knn[which.min(maes.knn)]
+print(k.optimal_mae)
+# [2] 1057.857
+# k=7
+
+
+# me 기준
+k.optimal_me = (1:K)[which.min(mes.knn)]
+mes.knn[which.min(mes.knn)]
+print(k.optimal_me)
+# [3] 217.1771
+# k=5
+```
+
+RMSE 오류 측도를 기준으론, k=7일 때 RMSE의 값이 1459.064로 가장 작았습니다.
+
+MAE 오류 측도를 기준으로, k=7일 때 MAE의 값이 1057.857로 가장 작았습니다.
+
+ME 오류 측도를 기준으론, k=5 일 때 ME의 값이 217.1771로 가장 작았습니다.
+
+실제값과 추정값의 차이의 평균인 ME는 RMSE, MAE 보다 이상점에 민감하기 때문에 RMSE, MAE 오류 측도를 기준으로 
+
+k 값을 7로 정했습니다.
+
+```{r}
+# y와 yhat 비교
+yhat.knn_7 = knn.reg(train=as.matrix(x.train), test=as.matrix(x.val), y=y.train, k=7)$pred
+plot(x=Date.val, y=y.val, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+lines(x=Date.val, y=yhat.knn_7, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+
+print(rmses.knn[7])
+print(maes.knn[7])
+print(mes.knn[7])
+
+knn.val.error = c(rmses.knn[7], maes.knn[7], mes.knn[7])
+knn.val.error.names = c("RMSE", "MAE", "ME")
+
+# 표로 제시
+print(data.frame(Method = knn.val.error.names, ValErr_Err = knn.val.error))
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 로 k=7인 최근접이웃 모델로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 실제값과 추정값이 naive benchmark보단 성능이 괜찮아 보입니다.
+
+또한, k=7일 때 RMSE, MAE, ME 오류 측도도 확인했습니다.
+
+
+```{r}
+# 선형회귀
+X.train = as.matrix(x.train)
+obj.lm  = lm(y.train ~ X.train)
+yhat.lm = as.matrix(cbind(1, x.val)) %*% coef(obj.lm)
+
+
+# rmse
+rmse.lm = sqrt(mean((y.val-yhat.lm)^2))
+print(rmse.lm)
+
+# mae
+mae.lm = mean(abs(y.val-yhat.lm))
+print(mae.lm)
+
+# me
+me.lm = mean(abs((y.val-yhat.lm)/y.val))
+print(me.lm)
+```
+
+선형회귀 모델도 이용하여 적합시켰습니다.
+
+```{r}
+# validation error 표로 제시
+lm.val.error = c(rmse.lm, mae.lm, me.lm)
+lm.val.error.names = c("RMSE", "MAE", "ME")
+print(data.frame(Method = lm.val.error.names, ValErr_Err = lm.val.error))
+```
+
+RMSE는 1.222636e+03, MAE는 9.344699e+02, ME는 3.011682e-02임을 확인했습니다.
+
+```{r}
+# y와 yhat 비교
+plot(x=Date.val, y=y.val, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+lines(x=Date.val, y=yhat.lm, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 로 선형 회귀 모델로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 실제값과 추정값이 naive benchmark보단 성능이 괜찮아 보입니다.
+
+
+```{r}
+grid = 2^seq(from=50, to=-49, length=100) 
+rmses.ridge = rep(NA, length(grid))
+maes.ridge = rep(NA, length(grid))
+mes.ridge = rep(NA, length(grid))
+rmses.lasso = rep(NA, length(grid))
+maes.lasso = rep(NA, length(grid))
+mes.lasso = rep(NA, length(grid))
+X_train = as.matrix(x.train)
+```
+
+릿지, 라쏘 회귀 모델을 사용하기위해 필요한 변수입니다.
+
+```{r}
+# 릿지 회귀
+
+obj.ridge = glmnet( x = X_train, y=y.train, family = "gaussian" ,
+                    alpha=0, lambda = grid )
+
+for (g in 1:length(grid)) {
+  yhat.ridge = as.matrix(cbind(1, x.val)) %*% coef(obj.ridge)[ ,g] 
+  #rmse
+  rmse = sqrt(mean((y.val-yhat.ridge)^2))
+  rmses.ridge[g] = rmse
+  # mae
+  mae = mean(abs(y.val-yhat.ridge))
+  maes.ridge[g] = mae
+  # me
+  me = mean(y.val-yhat.ridge)
+  mes.ridge[g] = me
+}
+```
+
+lambda(=grid)의 값을 2^50,.....2^(-49)으로 선정하고 능형 선형회귀에 투입했습니다.
+
+```{r}
+# validation error
+par(mfrow=c(1,3)) 
+plot(x=log2(obj.ridge$lambda), y=rmses.ridge, col='red', pch=16, main='RMSE')
+plot(x=log2(obj.ridge$lambda), y=maes.ridge, col='blue', pch=16, main='MAE')
+plot(x=log2(obj.ridge$lambda), y=mes.ridge, col='darkgreen', pch=16, main='ME')
+```
+
+2^50,.....2^(-49)인 lambda(=grid)를 고려했을 때 각각의 RMSE, MAE, ME 값을 살펴보기 위한 그래프입니다.
+
+```{r}
+# rmse
+lambda.optimal.ridge.rmse = grid[which.min(rmses.ridge)]
+# 64
+rmses.ridge[which.min(rmses.ridge)]
+#[1] 1220.664
+
+# mae
+lambda.optimal.ridge.mae = grid[which.min(maes.ridge)]
+# 0.25
+maes.ridge[which.min(maes.ridge)]
+#[2] 934.455
+
+# me
+lambda.optimal.ridge.me = grid[which.min(mes.ridge)]
+# 7.450581e-09
+mes.ridge[which.min(mes.ridge)]
+# [3] 239.5265
+```
+
+RMSE 오류 측도를 기준으론, lambda가 64일 때 RMSE의 값이 1220.664로 가장 작았습니다.
+
+MAE 오류 측도를 기준으로, lambda가 0.25일 때 MAE의 값이 934.455로 가장 작았습니다.
+
+ME 오류 측도를 기준으론, lambda가 7.450581e-09일 때 ME의 값이 239.5265로 가장 작았습니다.
+
+실제값과 추정값의 차이의 평균인 ME는 RMSE, MAE 보다 이상점에 민감하기 때문에 RMSE, MAE 오류 측도를 기준으로 
+
+선택하는 게 좋을 것이라 판단했습니다.
+
+```{r}
+# y와 yhat 비교
+plot(x=Date.val, y=y.val, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+lines(x=Date.val, y=yhat.ridge, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 로 능형 회귀 모델(마지막 람다)로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 실제값과 추정값이 naive benchmark보단 성능이 괜찮아 보입니다.
+
+knn, 선형 회귀와는 비교 시계열 그래프는 큰 차이는 없어 보입니다.
+
+```{r}
+# 라쏘 회귀
+
+obj.lasso = glmnet( x = X_train, y=y.train, family = "gaussian" ,
+                    alpha=1, lambda = grid )
+
+for (g in 1:length(grid)) {
+  yhat.lasso = as.matrix(cbind(1, x.val)) %*% coef(obj.lasso)[ ,g] 
+  #rmse
+  rmse = sqrt(mean((y.val-yhat.lasso)^2))
+  rmses.lasso[g] = rmse
+  # mae
+  mae = mean(abs(y.val-yhat.lasso))
+  maes.lasso[g] = mae
+  # me
+  me = mean(y.val-yhat.lasso)
+  mes.lasso[g] = me
+}
+```
+
+lambda(=grid)의 값을 2^50,.....2^(-49)으로 선정하고 라쏘 선형회귀에 투입했습니다.
+
+```{r}
+# validation error
+par(mfrow=c(1,3)) 
+plot(x=log2(obj.lasso$lambda), y=rmses.lasso, col='red', pch=16, main='RMSE')
+plot(x=log2(obj.lasso$lambda), y=maes.lasso, col='blue', pch=16, main='MAE')
+plot(x=log2(obj.lasso$lambda), y=mes.lasso, col='darkgreen', pch=16, main='ME')
+```
+
+2^50,.....2^(-49)인 lambda(=grid)를 고려했을 때 각각의 RMSE, MAE, ME 값을 살펴보기 위한 그래프입니다.
+
+```{r}
+# rmse
+lambda.optimal.lasso.rmse = grid[which.min(rmses.lasso)]
+# 2
+rmses.lasso[which.min(rmses.lasso)]
+#[1] 1222.411
+
+# mae
+lambda.optimal.lasso.mae = grid[which.min(maes.lasso)]
+# 1.776357e-15
+maes.lasso[which.min(maes.lasso)]
+#[2] 934.4699
+
+# me
+lambda.optimal.lasso.me = grid[which.min(mes.lasso)]
+# 0.0625
+mes.lasso[which.min(mes.lasso)]
+# [3] 239.4524
+
+```
+
+RMSE 오류 측도를 기준으론, lambda가 2일 때 RMSE의 값이 1222.411로 가장 작았습니다.
+
+MAE 오류 측도를 기준으로, lambda가 1.776357e-15일 때 MAE의 값이 934.4699로 가장 작았습니다.
+
+ME 오류 측도를 기준으론, lambda가 # 0.0625일 때 ME의 값이 239.4524로 가장 작았습니다.
+
+실제값과 추정값의 차이의 평균인 ME는 RMSE, MAE 보다 이상점에 민감하기 때문에 RMSE, MAE 오류 측도를 기준으로 
+
+선택하는 게 좋을 것이라 판단했습니다.
+
+```{r}
+# y와 yhat 비교
+plot(x=Date.val, y=y.val, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+lines(x=Date.val, y=yhat.lasso, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 로 라쏘 회귀 모델(마지막 람다)로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 실제값과 추정값이 naive benchmark보단 성능이 괜찮아 보입니다.
+
+knn, 선형 회귀, 능형 회귀와는 비교 시계열 그래프는 큰 차이는 없어 보입니다.
+
+```{r}
+##### 모형 평가 및 비교 결과 (validation-set error)
+my.rmses = c(rmse.naive, rmses.knn[which.min(rmses.knn)], rmse.lm,
+          rmses.ridge[which.min(rmses.ridge)], rmses.lasso[which.min(rmses.lasso)])
+my.names.rmses = c("Naive (averaged response)",   
+              sprintf("kNN (k.opt=%d)", k.optimal_rmse),
+             "Linear regression",
+              sprintf("Ridge regression (lam.opt=%.2f)", lambda.optimal.ridge.rmse),
+              sprintf("Lasso regression (lam.opt=%.2f)", lambda.optimal.lasso.rmse))
+
+my.maes = c(mae.naive, maes.knn[which.min(maes.knn)], rmse.lm,
+             maes.ridge[which.min(maes.ridge)], maes.lasso[which.min(maes.lasso)])
+my.names.maes = c("Naive (averaged response)",   
+             sprintf("kNN (k.opt=%d)", k.optimal_mae),
+             "Linear regression",
+             sprintf("Ridge regression (lam.opt=%.15f)", lambda.optimal.ridge.mae),
+             sprintf("Lasso regression (lam.opt=%.15f)", lambda.optimal.lasso.mae))
+
+my.mes = c(me.naive, mes.knn[which.min(mes.knn)], me.lm,
+             mes.ridge[which.min(mes.ridge)], mes.lasso[which.min(mes.lasso)])
+my.names.mes = c("Naive (averaged response)",   
+             sprintf("kNN (k.opt=%d)", k.optimal_me),
+             "Linear regression",
+             sprintf("Ridge regression (lam.opt=%.9f)", lambda.optimal.ridge.me),
+             sprintf("Lasso regression (lam.opt=%.9f)", lambda.optimal.lasso.me))
+
+# 표로 제시
+print(data.frame( Method = my.names.rmses, ValErr_RMSE = my.rmses))
+print(data.frame( Method = my.names.maes, ValErr_MAE = my.maes))
+print(data.frame( Method = my.names.mes, ValErr_ME = my.mes))
+
+```
+
+
+RMSE는 Naive (averaged response)은 5010.303, (k=7)kNN은 1459.064, Linear regression은 1222.636
+
+(lambda=64.00)Ridge regression은 1220.664, (lambda=2.00)Lasso regression은 1222.411
+
+RMSE에선 (lambda=64.00)Ridge regression의 RMSE가 1220.664으로 가장 작다.
+
+
+MAE는 Naive (averaged response)은 4766.7065, (k=7)kNN은 1057.8571, Linear regression은 1222.6364
+
+(lambda=64.00)Ridge regression은 934.4550, (lambda=2.00)Lasso regression은 934.4699
+
+MAE에선 (lambda=64.00)Ridge regression의 MAE가 (lambda=2.00)Lasso regression의 MAE보다 미세한 차이로 가장 작다.
+
+
+ME는 Naive (averaged response)은 4.713554e+03, (k=7)kNN은 2.462846e+02, Linear regression은 3.011682e-02
+
+(lambda=64.00)Ridge regression은 2.395265e+02, (lambda=2.00)Lasso regression은 2.394524e+02
+
+ME에선 (lambda=2.00)Lasso regression의 ME가 (lambda=64.00)Ridge regression의 ME보다 미세한 차이로 가장 작다.
+
+따라서 능형, 라쏘가 가장 데이터에 적합한 모델임을 확인했다.
+
+RMSE, MAE에선 능형 회귀의 오류 척도가 가장 작았기 때문에 최종 모델로 lambda가 64인 능형 회귀 모델을 선정했다.
+
+
+```{r}
+##### final model 및 test-set error
+# validation-set error 기준, 
+# ridge with lambda = lambda.optimal.ridge가 최적의 모형으로 선정되었다.
+
+x.final = rbind(x.train, x.val)
+X.final = as.matrix(x.final)
+y.final = c(y.train, y.val)
+
+final.obj.ridge = glmnet( x = X.final, y=y.final, family = "gaussian" ,
+                    alpha=0, lambda = lambda.optimal.ridge.rmse )
+
+final.yhat.ridge = as.matrix(cbind(1, x.test)) %*% coef(final.obj.ridge)
+
+final.rmse.ridge = sqrt(mean((y.test-final.yhat.ridge)^2))
+final.mae.ridge = mean(abs(y.test-final.yhat.ridge))
+final.me.ridge = mean(y.test-final.yhat.ridge)
+
+
+# test-set error
+ridge.test.error = c(final.rmse.ridge, final.mae.ridge, final.me.ridge)
+ridge.test.error.names = c("RMSE", "MAE", "ME")
+
+# test-set error 표로 제시
+print(data.frame(Method = ridge.test.error.names, TesErr_Err = ridge.test.error))
+
+final.obj.ridge$beta
+```
+
+위에서 선택한 모델을 선택하여 앞에서의 과정을 동일하게 살펴봤습니다.
+
+train, validation dataset을 합쳐서 (lambda=64.00)인 능형 회귀모델을 학습시킨 후,
+
+test 데이터와 비교하는 과정을 진행했습니다.
+
+또한, RMSE는 1344.6751 , MAE는 1039.2479, ME는 340.1813임을 확인했다.
+
+
+```{r}
+# y와 yhat 비교
+plot(x=Date.test, y=y.test, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+lines(x=Date.test, y=final.yhat.ridge, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 로 lambda가 64인 능형 회귀 모델로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 실제값과 추정값이 naive benchmark보단 성능이 괜찮아 보입니다.
+
+knn, 선형 회귀, 라쏘 회귀와는 비교 시계열 그래프는 큰 차이는 없어 보입니다.
+
+
+
+#### 2).
+
+###### (b)
+
+```{r}
+set.seed(1)
+
+n = 10000
+
+X1 = runif(n, 0, 2)
+X2 = runif(n, 0, 2)
+
+theta.true = c(1, -2, 1)
+x_theta = theta.true[1] + theta.true[2] * X1 + theta.true[3] * X2
+
+mu <- exp(x_theta)
+y = rpois(n, lambda = mu)
+
+Xmat = cbind(1, X1, X2)
+
+MAXITER = 1000
+
+tol = 10^-8
+theta.old = c(0,0,0)
+for (t in 1:MAXITER) {
+  cat(sprintf("============ Iteration %d ==========\n", t))
+  
+  hat <- Xmat %*% theta.old
+  u_x <- exp(hat)
+  
+  dpi <- ( t(u_x-y) %*% Xmat ) / n # 3x1, 1차
+  
+  A = as.vector( u_x )
+  
+  d2pi <- t(Xmat) %*% diag(A) %*% Xmat / n
+  
+  d2pi2 <- solve(d2pi)
+  
+  theta.new <- theta.old - c( d2pi2 %*% t(dpi) )
+  
+  cat(sprintf("theta.old= (%.5f, %.5f, %.5f)\n", theta.old[1], theta.old[2], theta.old[3]))
+  cat(sprintf("theta.new= (%.5f, %.5f, %.5f)\n\n", theta.new[1], theta.new[2], theta.new[3]))
+  
+  diff = sqrt(sum((theta.new - theta.old)^2))
+  
+  cat(sprintf("L2 difference between theta.new and theta.old: %.8f\n\n", diff)) 
+  
+  if (diff < tol) { 
+    cat(sprintf("Fisher scoring algorithm converged with %d iterations\n", t))
+    theta.hat = theta.new
+    break
+  }
+  
+  theta.old <- theta.new
+
+  if (t == MAXITER) cat("Did not converge\n")
+}
+print(theta.hat)
+
+fit <- glm(y~ X1 + X2, family = poisson)                            
+summary(fit)
+
+```
+
+
+###### (c)
+
+```{r}
+# 데이터셋 분류 train, test, validation 6:2:2
+# 시계열 데이터이기 때문에 random하게 train, validation, test dataset을 나누는 게 아닌 날짜 순에 맞춰 6:2:2로 할당했다.
+
+n = nrow(Cheongpa2)
+ratio.train = 0.6 ; ratio.val = 0.2
+n.train = floor(n * ratio.train)
+n.val =  floor(n * ratio.val)
+n.test = n - n.train - n.val
+
+ind.train = 1:n.train
+ind.val = (n.train + 1):(n.train + n.val)
+ind.test = (n.train + n.val + 1):n
+
+train_data = Cheongpa2[ind.train,]
+validation_data = Cheongpa2[ind.val,]
+test_data = Cheongpa2[ind.test,]
+x.val.pois = Cheongpa2[ind.val, 3:9]
+
+nrow(train_data); nrow(validation_data);  nrow(test_data)
+
+obj.fit <- glm(Today~ . -Date, family = poisson, data = train_data)   
+yhat.pois = as.matrix(cbind(1, x.val.pois)) %*% coef(obj.fit)
+yhat.pois = exp(yhat.pois)
+
+# rmse
+rmse.pois = sqrt(mean((validation_data$Today - yhat.pois)^2))
+print(rmse.pois)
+
+# mae
+mae.pois = mean(abs(validation_data$Today - yhat.pois))
+print(mae.pois)
+
+# me
+me.pois = mean(abs((validation_data$Today - yhat.pois)/validation_data$Today))
+print(me.pois)
+
+
+pois.val.error = c(rmse.pois, mae.pois, me.pois)
+pois.val.error.names = c("RMSE", "MAE", "ME")
+
+# validation error 표로 제시
+print(data.frame(Method = pois.val.error.names, ValErr_Err = pois.val.error))
+```
+
+RMSE는 1.242975e+03 , MAE는 9.246179e+02, ME는 2.979216e-02임을 확인할 수 있습니다.
+
+```{r}
+# y와 yhat 비교
+plot(x=validation_data$Date, y=validation_data$Today, type='l', xlab="Date", ylab="Today (count)", tck=1, col="red")
+lines(x=validation_data$Date, y=yhat.pois, col="blue")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+```
+
+실제 validation dataset의 Today와 train dataset으로 훈련시킨 로 포아송 선형 모델로 얻은 추정값을 비교한 그래프입니다.
+
+시계열 그래프를 봤을 때, 정확하게 판단하긴 어려우나 실제값과 추정값이 얼추 비슷해보이기 떄문에 성능이 괜찮아 보입니다.
+
+
+
+#### 3).
+
+###### (b)
+
+
+```{r}
+for (n in c(100, 1000, 10000, 100000)){
+  set.seed(1)
+  x = rnorm(n)
+  y = 2 + 3*x 
+ 
+  y.quan.10_per = quantile(y, probs = .1)
+  
+  dataset = data.frame(x,y)
+  dataset$y = ifelse((dataset$y)>=y.quan.10_per, NA, dataset$y)
+  dataset = na.omit(dataset)
+  fit = rq(y ~ x, data=dataset, tau=0.1)
+  print(fit)
+}
+```
+
+###### (c)
+
+```{r}
+taus <- c(0.1, 0.3, 0.5, 0.7, 0.9) 
+
+
+# 데이터셋 분류 train, test, validation 6:2:2
+# 시계열 데이터이기 때문에 random하게 train, validation, test dataset을 나누는 게 아닌 날짜 순에 맞춰 6:2:2로 할당했다.
+
+n = nrow(Cheongpa2)
+ratio.train = 0.6 ; ratio.val = 0.2
+n.train = floor(n * ratio.train)
+n.val =  floor(n * ratio.val)
+n.test = n - n.train - n.val
+
+ind.train = 1:n.train
+ind.val = (n.train + 1):(n.train + n.val)
+ind.test = (n.train + n.val + 1):n
+
+train_data = Cheongpa2[ind.train,]
+validation_data = Cheongpa2[ind.val,]
+x.val.quan = Cheongpa2[ind.val, 3:9]
+
+
+obj.quan <- rq(Today~.-Date, tau = taus, data = train_data)
+obj.quan
+
+yhat.quan_10_per =as.matrix(cbind(1, x.val.quan)) %*% coef(obj.quan)[ ,1] 
+yhat.quan_30_per =as.matrix(cbind(1, x.val.quan)) %*% coef(obj.quan)[ ,2] 
+yhat.quan_50_per =as.matrix(cbind(1, x.val.quan)) %*% coef(obj.quan)[ ,3] 
+yhat.quan_70_per =as.matrix(cbind(1, x.val.quan)) %*% coef(obj.quan)[ ,4] 
+yhat.quan_90_per =as.matrix(cbind(1, x.val.quan)) %*% coef(obj.quan)[ ,5] 
+
+# y와 yhat 비교
+plot(x=validation_data$Date, y=validation_data$Today, type='l', xlab="Date", ylab="Today (count)", col="red")
+lines(x=validation_data$Date, y=yhat.quan_10_per, col="blue")
+lines(x=validation_data$Date, y=yhat.quan_30_per, col="darkgreen")
+lines(x=validation_data$Date, y=yhat.quan_50_per, col="black")
+lines(x=validation_data$Date, y=yhat.quan_70_per, col="purple")
+lines(x=validation_data$Date, y=yhat.quan_90_per, col="darkorange")
+
+ticks = as.Date(c("2018-12-01", "2019-03-01", "2019-06-01", "2019-09-01", "2019-12-01", 
+                  "2020-03-01", "2020-06-01", "2020-09-01"))
+
+ticklabels = as.character(ticks)
+axis(3, at = ticks, labels=ticklabels)
+abline(v=ticks, lty=2, col="gray")
+```
+
+
+###### (e)
+
+```{r}
+B=1000
+theta = matrix(0, nrow = B, ncol = 8)
+n = nrow(train_data)
+for (b in 1:B){
+  set.seed(123)
+  ind.b = sample(1:n, size=n, replace=TRUE)
+  df.b = train_data[ind.b,]
+  cc = coef(rq(Today~.-Date, tau = 0.1, data = train_data))
+  theta[b, 1] = cc[1]
+  theta[b, 2] = cc[2]
+  theta[b, 3] = cc[3]
+  theta[b, 4] = cc[4]
+  theta[b, 5] = cc[5]
+  theta[b, 6] = cc[6]
+  theta[b, 7] = cc[7]
+  theta[b, 8] = cc[8]
+}
+apply(theta, 2, mean)
+```
+
+
+###### (f)
+
+```{r}
+B=1000
+theta = matrix(0, nrow = B, ncol = 2)
+n = 1000
+x = rnorm(n)
+y = 3*x + rnorm(n)
+dataset = data.frame(x,y)
+
+for (b in 1:B){
+  set.seed(123)
+  ind.bb = sample(1:n, size=n, replace=TRUE)
+  df.bb = dataset[ind.bb,]
+  cc = coef(rq(y ~ x, tau = 0.1, data = train_data))
+  theta[b, 1] = cc[1]
+  theta[b, 2] = cc[2]
+}
+apply(theta, 2, mean)
+
+```
