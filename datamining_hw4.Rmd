@@ -1,0 +1,477 @@
+---
+title: "datamining-2020f homework_4"
+author: " 4 조" 
+date: '2020 11 10'
+output: html_document
+---
+
+#### 조원 : 1614335 통계학과 임나희, 1610812 통계학과 박혜영, 1611888 통계학과 박유희 **(최종 검토자 : 박유희)**
+
+### 1. library load
+
+```{r library}
+# library load
+library(ISLR)
+library(tree)
+library(glmnet)
+```
+
+
+### ch8) 9. (풀이 : 임나희, 박유희, 박혜영)
+
+#### (a)
+```{r}
+set.seed(1)
+train=sample(1:nrow(OJ),800)
+OJ.train=OJ[train,]
+OJ.test=OJ[-train,]
+```
+
+OJ데이터에서 랜덤으로 뽑은 800개의 데이터로 train set을 만들었고 800개 데이터를 제외한 나머지로 test set을 만들었다. 
+
+#### (b)
+```{r}
+tree.OJ_full=tree(Purchase~.,data=OJ.train) 
+summary(tree.OJ_full)
+```
+
+
+결과를 보면 tree를 설명하는데 쓰인 변수는 LoyalCH, PriceDiff, SpecialCH, ListPriceDiff, PctDiscMM이다. training error rate는 0.1588, tree가 가지고 있는 terminal node의 개수는 9개이다. 
+
+#### (c)
+```{r}
+tree.OJ_full
+```
+
+terminal node는 *표로 표시되어 있다. 
+
+node 11 PriceDiff를 보면  PriceDiff > 0.05를 기준으로 나뉘어져 있다. 109개의 관측치가 있고 이 떄 deviance는 147.00이다. 
+
+예측은 관측치의 59.6퍼센트가 CH를 취하고, 40.3퍼센트는 MM을 취한다. 
+
+#### (d)
+```{r}
+plot(tree.OJ_full)
+text(tree.OJ_full, pretty=0)
+```
+
+제일 중요한 predictor 는 LoyalCH라는 것을 알 수 있다. 그래프에서 위에서부터 보면 영역을 나눌 때 LoyalCH로 탑3까지 나눌 뿐 아니라
+
+전체적으로 봐도 LoyalCH 기준으로 나눈 것이 제일 많기 때문이다. 
+
+#### (e)
+```{r}
+tree.pred=predict(tree.OJ_full, newdata=OJ.test,type="class" )
+mean(tree.pred!= OJ.test$Purchase)
+```
+
+test error는 0.17이다.
+
+#### (f)
+```{r}
+
+#k=1인 경우
+  n=nrow(OJ.train)
+  K=5
+  k=1
+  set.seed(1)
+  ind.shfl=sample(1:n, size=n)
+  ind.val=ind.shfl[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  ind.tr=setdiff(1:n, ind.val)
+  df.train=OJ.train[ind.tr, ]
+  df.val=OJ.train[ind.val, ]
+  
+#what size is the best
+  tree.OJ=tree(Purchase~.,data=df.train)
+#tree.c의 subtree생성
+  size.seq_1=prune.tree(tree.OJ)$size
+#subtree들의 성능평가
+  error.stack_1=rep(NA, length(size.seq_1)-1)
+  for (i in 1:(length(size.seq_1)-1)) {
+    mysize=size.seq_1[i]
+    tree.OJ.temp=prune.tree(tree.OJ, best=mysize)
+    yhat=predict(tree.OJ.temp, newdata=df.val, type="class")
+    
+    
+    mis=(table(yhat, df.val$Purchase)[1,2]+table(yhat, df.val$Purchase)[2,1])/nrow(df.val)
+    
+    error.stack_1[i]=mis
+  }
+  
+  mean(error.stack_1)
+  i.opt_1=which.min(error.stack_1)
+  
+  
+  error.stack_1
+  i.opt_1
+ 
+```
+
+
+구한 error값들은 이와 같고 이 값들을 평균내면  0.1839286이다. error 값들 중 가장 작은 값은 첫 번쨰,두 번째, 세 번쨰 다 같은 값인 0.1625이다.
+
+```{r}
+#k=2인 경우
+  n=nrow(OJ.train)
+  K=5
+  k=2
+  set.seed(1)
+  ind.shfl=sample(1:n, size=n)
+  ind.val=ind.shfl[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  ind.tr=setdiff(1:n, ind.val)
+  df.train=OJ.train[ind.tr, ]
+  df.val=OJ.train[ind.val, ]
+  
+#what size is the best
+  tree.OJ=tree(Purchase~.,data=df.train)
+#tree.c의 subtree생성
+  size.seq=prune.tree(tree.OJ)$size
+#subtree들의 성능평가
+  error.stack_2=rep(NA, length(size.seq)-1)
+  for (i in 1:(length(size.seq)-1)) {
+    mysize=size.seq[i]
+    tree.OJ.temp=prune.tree(tree.OJ, best=mysize)
+    yhat=predict(tree.OJ.temp, newdata=df.val, type="class")
+    
+    
+    mis=(table(yhat, df.val$Purchase)[1,2]+table(yhat, df.val$Purchase)[2,1])/nrow(df.val)
+    
+    error.stack_2[i]=mis
+  }
+  
+  mean(error.stack_2)
+  i.opt_2=which.min(error.stack_2)
+ 
+  
+  error.stack_2
+  i.opt_2
+  
+```
+
+
+구한 error값들은 이와 같고 이 값들을 평균내면  0.2361111이다. error 값들 중 가장 작은 값은 아홉 번쨰 값인 0.20000이다.
+
+```{r}
+
+  
+  #k=3인 경우
+  n=nrow(OJ.train)
+  K=5
+  k=3
+  set.seed(1)
+  ind.shfl=sample(1:n, size=n)
+  ind.val=ind.shfl[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  ind.tr=setdiff(1:n, ind.val)
+  df.train=OJ.train[ind.tr, ]
+  df.val=OJ.train[ind.val, ]
+  
+#what size is the best
+  tree.OJ=tree(Purchase~.,data=df.train)
+#tree.c의 subtree생성
+  size.seq=prune.tree(tree.OJ)$size
+#subtree들의 성능평가
+  error.stack_3=rep(NA, length(size.seq)-1)
+  for (i in 1:(length(size.seq)-1)) {
+    mysize=size.seq[i]
+    tree.OJ.temp=prune.tree(tree.OJ, best=mysize)
+    yhat=predict(tree.OJ.temp, newdata=df.val, type="class")
+    
+    
+    mis=(table(yhat, df.val$Purchase)[1,2]+table(yhat, df.val$Purchase)[2,1])/nrow(df.val)
+    
+    error.stack_3[i]=mis
+  }
+  mean(error.stack_3)
+  i.opt_3=which.min(error.stack_3)
+  
+  
+  error.stack_3
+  i.opt_3
+  
+  
+```
+
+구한 error값들은 이와 같고 이 값들을 평균내면  0.196875이다. error 값들 중 가장 작은 값은 첫 번쨰 값인 0.1625이다.
+
+```{r}
+  #k=4인 경우
+  n=nrow(OJ.train)
+  K=5
+  k=4
+  set.seed(1)
+  ind.shfl=sample(1:n, size=n)
+  ind.val=ind.shfl[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  ind.tr=setdiff(1:n, ind.val)
+  df.train=OJ.train[ind.tr, ]
+  df.val=OJ.train[ind.val, ]
+  
+#what size is the best
+  tree.OJ=tree(Purchase~.,data=df.train)
+#tree.c의 subtree생성
+  size.seq=prune.tree(tree.OJ)$size
+#subtree들의 성능평가
+  error.stack_4=rep(NA, length(size.seq)-1)
+  for (i in 1:(length(size.seq)-1)) {
+    mysize=size.seq[i]
+    tree.OJ.temp=prune.tree(tree.OJ, best=mysize)
+    yhat=predict(tree.OJ.temp, newdata=df.val, type="class")
+    
+    
+    mis=(table(yhat, df.val$Purchase)[1,2]+table(yhat, df.val$Purchase)[2,1])/nrow(df.val)
+    
+    error.stack_4[i]=mis
+  }
+  
+  mean(error.stack_4)
+  i.opt_4=which.min(error.stack_4)
+  
+  
+  error.stack_4
+  i.opt_4
+  
+```
+
+구한 error값들은 이와 같고 이 값들을 평균내면  0.2451389이다. error 값들 중 가장 작은 값은 일곱 번쨰,여덜 번쨰, 아홉 번쨰 다 같은 값인 0.23125이다.
+
+```{r}
+
+  #k=5인 경우
+  n=nrow(OJ.train)
+  K=5
+  k=5
+  set.seed(1)
+  ind.shfl=sample(1:n, size=n)
+  ind.val=ind.shfl[(floor(n/K)*(k-1)+1):(floor(n/K)*k)]
+  ind.tr=setdiff(1:n, ind.val)
+  df.train=OJ.train[ind.tr, ]
+  df.val=OJ.train[ind.val, ]
+  
+#what size is the best
+  tree.OJ=tree(Purchase~.,data=df.train)
+#tree.c의 subtree생성
+  size.seq=prune.tree(tree.OJ)$size
+#subtree들의 성능평가
+  error.stack_5=rep(NA, length(size.seq)-1)
+  for (i in 1:(length(size.seq)-1)) {
+    mysize=size.seq[i]
+    tree.OJ.temp=prune.tree(tree.OJ, best=mysize)
+    yhat=predict(tree.OJ.temp, newdata=df.val, type="class")
+    
+    
+    mis=(table(yhat, df.val$Purchase)[1,2]+table(yhat, df.val$Purchase)[2,1])/nrow(df.val)
+    
+    error.stack_5[i]=mis
+  }
+  
+  mean(error.stack_5)
+  i.opt_5=which.min(error.stack_5)
+  
+  
+  error.stack_5
+  i.opt_5
+  
+```
+
+
+구한 error값들은 이와 같고 이 값들을 평균내면  0.190625이다. error 값들 중 가장 작은 값은 첫 번쨰, 두 번쨰, 세 번쨰 다 같은 값인 0.15000이다.
+
+```{r}
+error.stack_full=c(mean(error.stack_1),mean(error.stack_2),mean(error.stack_3),mean(error.stack_4),mean(error.stack_5))
+
+which.min(error.stack_full)
+
+error.stack_full[which.min(error.stack_full)]
+```
+
+k=1,2,3,4,5일 떄 각각 구한 error들의 평균값 중 가장 작은 값은 0.1839286이다. 
+
+
+
+
+#### (g)
+```{r}
+plot(size.seq_1[-8],error.stack_1,xlab="Size of the Tree",ylab="misclassification error",type = "b")
+
+points(6,min(error.stack_1),col="red")
+```
+
+#### (h)
+
+(g)에서 그린 그래프를 보면 size=6일 떄 error 값이 제일 작다. 따라서 best size는 6이다.
+
+#### (i)
+```{r}
+OJ.prune=prune.misclass(tree.OJ_full,best=6)
+plot(OJ.prune)
+text(OJ.prune,pretty=0)
+```
+
+
+#### (j)
+```{r}
+summary(tree.OJ_full)
+summary(OJ.prune)
+```
+
+tree.OJ_full의 misclassification error는 0.1588, OJ.prune의 misclassification error는 0.1625이다. error는 pruning 한 트리의 error 가 더 크다는 것을 알 수 있다. 
+
+#### (k)
+```{r}
+prune.pred=predict(OJ.prune, OJ.test, type="class")
+mean(prune.pred!= OJ.test$Purchase)
+```
+
+pruning 하지 않은 tree의 test error는 0.17이다.pruning한 tree의 test error는 0.162963이다.test error는 pruning 하지 않은 tree 가 더 높다는 것을 알 수 있다. 
+
+
+### 추가문제. (풀이 : 임나희, 박유희, 박혜영)
+
+#### (a)
+```{r}
+expit = function(t) return( exp(t) / (1 + exp(t)) )
+
+set.seed(1)
+n = 1000
+x=matrix(rnorm(1000*20),1000,20)
+b=c(2,-1,0,-5,0,1,7,0,4,-3,8,1,3,0,5,-4,2,2,0,5)
+x_theta=x %*% b
+y = rbinom(n=n, size=1, prob=expit(x_theta)) 
+y = as.matrix(y)
+```
+
+x의 경우 rnorm 함수를 통해 p=20, n=1000인 행렬 테이터를 생성했습니다.
+
+beta의 경우 20%의 비율로 zero 성분이 일정 개수 존재하도록 했습니다.(p=20)
+
+y는 생성한 x, beta로 로지스틱 선형모형을 만족시키도록 1000개 생성했습니다.
+
+
+#### (b)
+```{r}
+set.seed(1)
+ind.shfl=sample(n)
+ind.train=ind.shfl[1:100]
+ind.test=ind.shfl[101:1000]
+x.train=x[ind.train,]
+y.train=y[ind.train]
+x.test=x[ind.test,]
+y.test=y[ind.test]
+```
+
+위에서 만든 1000개의 데이터 중 100개는 train set으로 만들고 나머지 900개는 test set으로 만들었습니다.
+
+#### (c)
+```{r}
+grid=2^seq(from=50,to=-49,length=100)
+
+#fit
+obj.lasso = glmnet(x=x.train,y=y.train,family="binomial",alpha=1, lambda=grid)
+```
+
+lambda는 2^(50), ..., 2^(-49)로 설정했습니다.
+
+train set로 lasso 이진 로지스틱 회귀를 적합시켰습니다.
+
+#### (d)
+```{r}
+plot(log10(obj.lasso$lambda), obj.lasso$df, col='red', pch=16, xlab = "log10(lambda)", ylab = "df")
+```
+
+lambda와 적합된 모형계수 βˆλ의 nonzero 성분 개수를 시각화를 통해 살펴봤습니다.
+ 
+가독성을 위해 lambda의 경우, log10으로 로그 스케일링을 하여 x축에 표현했습니다.
+ 
+ 
+#### (e)
+```{r}
+error.table_train=rep(NA,length(y.train))
+
+for (g in 1:length(grid)){
+  yhat.lasso=x.train%*%obj.lasso$beta[,g]
+  y.prob=expit(yhat.lasso)
+  yhat.lasso_change=ifelse(y.prob> 0.5,1,0)
+  tr.error=mean(y.train!=yhat.lasso_change)
+  
+  error.table_train[g]=tr.error
+   }
+plot(log10(obj.lasso$lambda), error.table_train, col='blue', pch=16, xlab = "log10(lambda)", ylab = "train 오분류율")
+``` 
+
+lambda와 적합된 모형의 train set 오분류율를 시각화를 통해 살펴봤습니다.
+ 
+가독성을 위해 lambda의 경우, log10으로 로그 스케일링을 하여 x축에 표현했습니다.
+
+#### (f)
+```{r}
+error.table_test=rep(NA,length(y.train))
+
+for (g in 1:length(grid)){
+  yhat.lasso=x.test%*%obj.lasso$beta[,g]
+  y.prob=expit(yhat.lasso)
+  yhat.lasso_change=ifelse(y.prob> 0.5,1,0)
+  tr.error=mean(y.test!=yhat.lasso_change)
+  
+  error.table_test[g]=tr.error
+}
+plot(log10(obj.lasso$lambda), error.table_test, col='darkgreen', pch=16, xlab = "log10(lambda)", ylab = "test 오분류율")
+```
+
+lambda와 적합된 모형의 test set 오분류율를 시각화를 통해 살펴봤습니다.
+ 
+가독성을 위해 lambda의 경우, log10으로 로그 스케일링을 하여 x축에 표현했습니다.
+ 
+#### (g)
+```{r}
+min.idx = which.min(error.table_test)
+print(min.idx)
+obj.lasso$lambda[min.idx]
+error.table_test[min.idx]
+
+obj.lasso$df[min.idx]
+
+coef(obj.lasso)[,min.idx]
+```
+
+test set 오분류율이 가장 작은 경우의 인덱스는 62이고, 그 때의 lambda 값은 0.0004882812이며 오분류율은 0.06555556입니다.
+
+인덱스가 62인 경우의  βˆλ의 nonzero 성분 개수는 16입니다.
+
+해당 인덱스에서의 계수들을 살펴봤을 때 intercept외에도 nonzero인 벡터거나 모든 성분이 nonzero인 벡터가 아니므로
+
+적합계수 trivial하지 않음을 알 수 있습니다.
+
+
+#### (h)
+```{r}
+value = sqrt(apply((b-obj.lasso$beta)^2, 2, sum))
+
+plot(log10(obj.lasso$lambda), value, col='pink', pch=16, xlab = "log10(lambda)", ylab = "l_2 추정오차")
+```
+
+각 lambda에 해당하는 l_2 추정오차를 구하여 value에 할당했습니다.
+
+lambda와 value를 시각화를 통해 살펴봤습니다.
+ 
+가독성을 위해 lambda의 경우, log10으로 로그 스케일링을 하여 x축에 표현했습니다.
+ 
+
+#### (i)
+```{r}
+min_idx = which.min(value)
+print(min.idx)
+obj.lasso$lambda[min_idx]
+value[min_idx]
+
+obj.lasso$df[min_idx]
+
+coef(obj.lasso)[,min_idx]
+```
+
+l_2 추정오차 값이 가장 작은 경우의 인덱스는 62이고, 그 때의 lambda 값은 0.0004882812이며 l_2 추정오차 값은 3.777125입니다.
+
+인덱스가 62인 경우의  βˆλ의 nonzero 성분 개수는 16입니다.
+
+g에서 찾은 모형의 lambda 및 자유도와 동일한 것을 확인할 수 있습니다.
+
+따라서 일반적으로 반응변수 예측을 가장 잘 하는 모형과 β 추정을 가장 잘 하는 모형이 동일하다고 볼 수 있습니다.
+
