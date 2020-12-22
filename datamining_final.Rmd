@@ -1,0 +1,161 @@
+---
+title: "datamining-2020f final"
+author: " 4 조 박유희" 
+date: '2020 12 18'
+output: html_document
+---
+
+### 1. library load
+
+```{r library}
+# library load
+
+library(tree)
+library(randomForest)
+library(gbm)
+```
+
+
+#### 1.(a)
+
+```{r}
+# 1. 트리 배깅을 하드 코딩으로 구현하기
+
+set.seed(1611888)
+
+bagging.class <- function(X, y, newdata, B, d){
+  
+  # 예측값 저장 공간
+  yhat.place = NULL
+  # train set으로 X, y 합치기
+  train = cbind(X, y)
+  
+  for (i in 1:B){
+    idx = sample(1:nrow(X), size = nrow(X), replace=T)
+    tr = train[idx,]
+    obj.tree = tree(y ~ . , data = tr)
+    sub.tree = prune.tree(obj.tree, best = d) 
+    yhat.tree = predict(object = sub.tree, newdata = newdata, type = "class")
+    # 분류값이 0, 1이지만 "1", "2" level로 구성되어 있는 팩터형이므로, 수치형으로 0, 1로 만들어줌.
+    yhat.tree = ifelse(as.numeric(yhat.tree) == 1, 0, 1)
+    yhat.place = cbind(yhat.place, yhat.tree)
+  }
+  # 1:B의 0, 1 개수를 레코드 별로 확인하기 위해 평균값을 구함.
+  yhat.place = apply(yhat.place, 1, mean)
+  
+  for (j in 1:nrow(newdata)){
+    # 각 레코드의 평균 값이 0.5보다 크면 1, 작으면 0으로 변환하여, 각 레코드 값에 저장해준 후 내뱉어준다.
+    yhat.place[j] = ifelse(yhat.place[j] > 0.5, 1, 0)
+  }
+  return (yhat.place)
+}
+
+# 데이터 설정
+
+# train
+n = 800
+p = 20
+X = matrix(data = runif(n * p, -1000, 1000), nrow = n, ncol = p)
+X = as.data.frame(X)
+# 임의로 prob = 0.7로 설정함.
+y = rbinom(n = n, size = 1, prob = 0.7) 
+y = as.factor(y)
+train = cbind(X, y)
+
+# test
+m = 200
+X_test = matrix(data = runif(n * p, -5000, 5000), nrow = m, ncol = p)
+X_test = as.data.frame(X_test)
+```
+
+ 
+
+#### 1.(b)
+
+```{r}
+set.seed(1611888)
+
+# bagging, randomForest()를 이용하는 경우
+obj.bag = randomForest(y ~ . , data = train, mtry = p, ntree = 1000, maxnodes = 6, nodesize = 6)
+yhat.bag = predict(object = obj.bag, newdata = X_test, type = "class")
+
+# bagging, 하드 코딩으로 구현한 경우
+yhat.hard = bagging.class(X, y, newdata = X_test, B = 1000, d = 6)
+
+err_bagging = table(as.factor(yhat.hard), yhat.bag)
+err_bagging
+```
+
+하드코딩으로 구현한 배깅 함수와 randowmForest() 함수를 이용하여 예측값을 구한 경우, 
+두 결과에 약간의 차이는 있지만 대체적으로 비슷해보입니다.
+
+#### 2.(a)
+
+```{r}
+# 2. 그래디언트 부스팅을 하드 코딩으로 구현하기
+
+set.seed(1611888)
+
+gbm.class <- function(X, y, newdata, B, eps, d){
+  
+  odds = 0
+  
+  for (i in 1:B){
+    
+    probability = exp(odds)/(1 + exp(odds))
+    probability = rep(probability, nrow(X))
+    # 이진분류용에 이용하는 손실함수를 미분한 경우, 유사 잔차 생성
+    r = probability - y
+    
+    # train set으로 X, r 합치기
+    train = cbind(X, r)
+    obj.tree = tree(r ~ . , data = train)
+    sub.tree = prune.tree(obj.tree, best = d) 
+    yhat.tree = predict(object = sub.tree, newdata = newdata, type = "vector")
+    odds = odds + (yhat.tree * eps)
+  }
+  probability = exp(odds)/(1 + exp(odds))
+  probability = ifelse(probability > 0.5, 1, 0)
+  return(probability)
+}
+
+# 데이터 설정
+
+# train
+n = 800
+p = 40
+X = matrix(data = runif(n * p, -1000, 1000), nrow = n, ncol = p)
+X = as.data.frame(X)
+# 임의로 prob = 0.5로 설정함.
+y = rbinom(n = n, size = 1, prob = 0.7) 
+train = cbind(X, y)
+
+# test
+m = 200
+X_test = matrix(data = runif(m * p, -5000, 5000), nrow = m, ncol = p)
+X_test = as.data.frame(X_test)
+```
+
+
+#### 2.(b)
+
+```{r}
+# 하드코딩 결과와 gbm() 함수를 사용한 경우 비교하기
+
+set.seed(1611888)
+
+# boosting, gbm()를 이용하는 경우
+obj.gbm = gbm(y ~ . , data = train, distribution = "bernoulli", 
+              n.trees = 100, shrinkage = 0.2, interaction.depth = 5)
+yhat.gbm = predict(object = obj.gbm, newdata = X_test,  type="response", n.tree = 100)
+yhat.gbm = ifelse(yhat.gbm > 0.5, 1, 0)
+
+# boosting, 하드 코딩으로 구현한 경우
+boosting.hard = gbm.class(X, y, newdata = X_test, B = 100, eps = 0.2, d = 5)
+
+err_boost = table(as.factor(boosting.hard), yhat.gbm)
+err_boost
+```
+
+하드코딩으로 구현한 부스팅 함수와 gbm() 함수를 이용하여 예측값을 구한 경우, 
+두 결과에 꽤 차이는 있지만 동일한 경우가 더 많음을 알 수 있습니다.
