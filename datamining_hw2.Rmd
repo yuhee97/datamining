@@ -1,0 +1,476 @@
+---
+title: "datamining-2020f homework_2"
+author: " 4 조"
+date: '2020 9 29'
+output: html_document
+---
+
+#### 조원 : 1614335 통계학과 임나희, 1610812 통계학과 박혜영, 1611888 통계학과 박유희 **(최종 검토자 : 박혜영)**
+
+## 1. library load
+
+```{r library}
+# library load
+# Auto data 
+library(ISLR)
+library(class)
+```
+
+
+### ch3) 9. (풀이 : 박유희 / 기여 : 박혜영, 임나희)
+
+#### (a)
+
+```{r}
+# 산점도 행렬
+pairs(Auto, pch=20, cex = 0.5, main="Auto Scatterplot Matrix")
+```
+
+Auto dataset의 변수들 간의 산점도를 산점도 행렬로 확인했습니다.
+
+각 산점도 그림의 크기가 작아 정확하게 판단하기는 어렵지만 유의미한 관계인 변수들이 보입니다.
+
+#### (b)
+
+```{r}
+# name 변수 제거 후 상관관계 확인
+Auto_name_ex = Auto[,-9]
+cor(Auto_name_ex)
+```
+
+Auto 데이터셋에서 name 변수를 제외하고 새로운 Auto_name_ex을 생성하여 변수들 간의 상관관계를 확인했습니다.
+
+음의 상관관계와 양의 상관관계를 갖는 변수들이 있음을 확인할 수 있습니다.
+
+#### (c)
+
+```{r}
+# Auto(name 제외) 데이터셋을 선형회귀모형에 적합
+fit = lm(mpg ~ . -name, data=Auto)
+summary(fit)
+```
+
+name을 제외한 7개의 독립변수를 mpg에 연관시키는 다중선형회귀 모델을 적합시켰습니다.
+
+
+#### (c.i)
+
+답: yes
+
+추정된 회귀 계수별로 확인 가능한 p-value는 추정된 계수가 실제 0일 확률 추정치이며,
+
+p-value 값이 작은 경우는 변수가 반응변수와 관계가 있을 가능성이 아주 높음을 의미합니다.
+
+p-value 값이 작은 변수가 있기 때문에 반응변수와 설명변수는 관계가 있습니다.
+
+
+#### (c.ii)
+
+답: displacement, weight, year, origin
+
+추정된 회귀 계수별로 확인 가능한 p-value는 추정된 계수가 실제 0일 확률 추정치이며,
+
+p-value 값이 작은 경우는 변수가 반응변수와 관계가 있을 가능성이 아주 높음을 의미합니다.
+
+p-value 값이 0.05보다 작은 경우로 displacement, weight, year, origin 변수가 있고, 
+
+해당 변수들은 통계학적으로 반응변수와 관계가 있을 가능성이 높다고 판단할 수 있습니다.
+
+
+#### (c.iii)
+
+```{r}
+# 각 변수의 계수 확인
+fit$coefficients
+```
+
+fit 모델의 여러 성분 중 coefficients를 이용하여 각 변수의 계수를 확인했습니다.
+
+fit 모델에서는 year변수의 계수를 0.750772678로 제안했습니다.
+
+#### (d)
+
+```{r fig.height = 7, fig,width = 7}
+# 진단 그래프
+par(mfrow=c(2,2))
+plot(fit, pch=20, cex = 0.5)
+```
+
+첫번째 그래프인 Residual vs Fitted를 보면, 비선형 형태를 띄고 있음을 확인할 수 있다. 
+
+그리고 오른쪽 상단에 323, 327번째 등 관측치의 잔차의 값이 크기 때문에 이상점의 후보이다.
+
+네번째 그래프인 Residual vs Leverage를 보면, 14번째 관측치의 cook's distance가 크기 때문에 영향 관측치로 보인다.
+
+#### (e)
+
+```{r}
+# 변수들의 교호작용 추가하여 적합
+Auto_name_ex = Auto[,-9]
+fit1 = lm(mpg ~ . * ., data = Auto_name_ex)
+summary(fit1)
+```
+
+displacement와 year, acceleration와 year, acceleration와 origin의 교호작용이 p-value < 0.05이므로 통계학적으로 유의합니다.
+
+
+#### (f)
+
+```{r}
+# 변수변환
+
+# 설명변수 로그변환
+Auto_trans = Auto[,-9]
+Auto_trans[2:8] = log(Auto_trans[2:8])
+fit2 = lm(mpg ~ ., data = Auto_trans)
+summary(fit2)
+```
+
+반응변수인 mpg를 제외한 변수(name 제외)를 로그변환 후 선형회귀모형을 적합했습니다.
+
+그 결과, p-value 값이 0.05보다 작은 경우로 horsepower, weight, acceleration, year, origin 변수가 있고, 
+
+해당 변수들은 통계학적으로 반응변수와 관계가 있을 가능성이 높다고 판단할 수 있습니다.
+
+```{r}
+# 설명변수 제곱근변환
+Auto_trans = Auto[,-9]
+Auto_trans[2:8] = sqrt(Auto_trans[2:8])
+fit3 = lm(mpg ~ ., data = Auto_trans)
+summary(fit3)
+```
+
+반응변수인 mpg를 제외한 변수(name 제외)를 제곱근변환 후 선형회귀모형을 적합했습니다.
+
+그 결과, p-value 값이 0.05보다 작은 경우로 horsepower, weight, year, origin 변수가 있고,
+
+해당 변수들은 통계학적으로 반응변수와 관계가 있을 가능성이 높다고 판단할 수 있습니다.
+
+
+```{r}
+# 설명변수 제곱변환
+Auto_trans = Auto[,-9]
+Auto_trans[2:8] = (Auto_trans[2:8])^2
+fit4 = lm(mpg ~ ., data = Auto_trans)
+summary(fit4)
+```
+
+반응변수인 mpg를 제외한 변수(name 제외)를 제곱변환 후 선형회귀모형을 적합했습니다.
+
+그 결과, p-value 값이 0.05보다 작은 경우로 cylinders, displacement, weight, acceleration, year, origin 변수가 있고,
+
+해당 변수들은 통계학적으로 반응변수와 관계가 있을 가능성이 높다고 판단할 수 있습니다.
+
+### ch3) 14. (풀이 : 박혜영 / 기여 : 임나희, 박유희)
+
+#### (a)
+```{r}
+set.seed(1)
+x1=runif(100)
+x2=0.5*x1+rnorm(100)/10
+y=2+2*x1+0.3*x2+rnorm(100)
+
+```
+
+선형모형의 형태는 Y = 2 + 2*X1 + 0.3*X2 + ε, ε~N(0,1), εㅗX 입니다.
+회귀계수는 각각  β0=2,  β1=2,  β2=0.3 입니다.
+
+ 
+#### (b)
+```{r}
+cor(x1, x2)
+plot(x1,x2)
+```
+
+x1과 x2사이에 높은 양의 선형관계가 존재하는 것으로 보입니다.
+
+#### (c)
+```{r}
+#선형회귀모형에 적합
+fit=lm(y~x1+x2)
+summary(fit)
+```
+
+계수 β^0, β^1 and β^2는 각각 2.1304996, 1.4395554 and 1.0096742 입니다.
+그 중 β^0=2.1304996만이 β0=2에 가까워 보입니다.
+Ho : β1=0에 대한 p-value는 0.05보다 작기때문에 Ho : β1=0 기각 가능합니다.
+따라서 주어진 모형에서 다른 변수들이 모두 존재하더라도 x1의 추가적인 설명력이 존재하다고 볼 수 있습니다.
+H0 : β2=0에 대한 p-value는 0.05보다 크기때문에 H0 : β2=0 기각 불가합니다.
+따라서 주어진 모형에서 다른 변수들이 모두 존재할 때 설명변수 x2의 추가적인 설명력이 있다고 볼 수 없습니다.
+
+#### (d)
+```{r}
+#predict y using only x1
+fit1 = lm(y~x1)
+summary(fit1)
+```
+
+계수 β^0, β^1은 각각 2.1124 , 1.9759입니다.
+Ho : β1=0에 대한 p-value는 0.05보다 작기때문에 Ho : β1=0 기각 가능합니다. 
+따라서 x1이 y에 대한 설명력이 통계적으로 유의하다는 것을 알 수 있습니다..
+
+#### (e)
+```{r}
+fit2<-lm(y~x2)
+summary(fit2)
+```
+
+계수 β^0, β^1은 각각  2.3899, 2.8996입니다.
+Ho : β1=0에 대한 p-value는 0.05보다 작기때문에 Ho : β1=0 기각 가능합니다. 
+따라서 x2이 y에 대한 설명력이 통계적으로 유의하다는 것을 알 수 있습니다.
+
+#### (f)
+
+(c)-(e)의 결과는 서로 모순되지 않습니다. x1과 x2사이에는 높은 양의 선형관계가 존재하기 때문에 두 설명변수 사이에 공선성이 존재할 가능성이 큽니다. 이런 경우, 설명변수 사이에 정보가 중복되어 나타나기 때문에 각각의 설명변수와 반응변수 사이의 관계를 해석하는데 어려움이 따릅니다. 또한 설명변수 사이의 상관관계가 큰 x1과 x2를 모두 포함하여 선형모형에 적합시켰을때, 회귀계수의 추정값의 표준오차는 커지게 되어 계수의 추정값은 불안정하고 신회할 수 없으며 잘못된 결론이 유도되기 쉽기때문에 세심한 분석이 요구됩니다.
+실제로 x1만으로 선형회귀적합시켰을때 β1의 standard error가  0.3963이고, x2만으로  선형회귀적합시켰을때 β1의 standard error가  0.6330인 반면, x1과 x2를 모두 포함시켜 선형회귀적합시켰을때 각 계수들의 standard error가 각각 0.7212 1.1337으로 커집니다. 
+따라서 위와 같은 공선성의 문제때문에 x1과 x2를 모두 포함시켜 선형회귀적합 시켰을때, x2의 설명력 중요도가 가려져서 Ho : β2=0를 기각하는데 실패한 것으로 보입니다. 
+
+#### (g)
+```{r}
+x1 = c(x1, 0.1)
+x2 = c(x2, 0.8)
+ y = c(y,6)
+```
+
+
+```{r}
+fit <- lm(y~x1+x2)
+summary(fit)
+
+fit1<-lm(y~x1)
+summary(fit1)
+
+fit2<-lm(y~x2)
+summary(fit2)
+```
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(fit)
+```
+
+x1과 x2를 모두 설명변수로 사용하였을때, 오른쪽 하단의 그래프를 보면 101번째 관측치의 cook's distance가 상대적으로 커서 가장 영향력이 큰 관측값이라고 할 수 있습니다.
+
+```{r}
+par(mfrow=c(2,2))
+plot(fit1)
+```
+
+x1만을 설명변수로 사용하였을때, 왼쪽 상단의 그래프를 보면 101번째 관측치의 잔차가 다른 관측치보다 커서 이상점일 가능성이 보입니다.
+
+```{r}
+par(mfrow=c(2,2))
+plot(fit2)
+
+```
+
+x2만을 설명변수로 사용하였을때, 오른쪽 하단의 그래프를 보면 101번째 관측치의 cook's distance가 상대적으로 커서 가장 영향력이 큰 관측값이라고 할 수 있습니다.
+
+
+### ch4) 11. (풀이 : 임나희 / 기여 : 박혜영, 박유희)
+
+#### [a]
+```{r}
+data(Auto)
+mpg01 <- ifelse(Auto$mpg > median(Auto$mpg),1,0)
+mydf <- data.frame(Auto, mpg01)
+```
+
+
+#### [b]
+```{r}
+pairs(mydf)
+```
+
+
+
+산점도를 보면 mpg01에 displacement, horsepower, weight, acceleration가 영향을 준다고 보입니다.
+
+#### [c]
+```{r}
+set.seed(1)
+trainid <- sample(1:nrow(mydf), nrow(mydf)*0.5, replace=F)
+train <-mydf[trainid, ]
+test <- mydf[-trainid, ]
+```
+
+ 
+#### [f]
+```{r}
+fit.logit <- glm(mpg01~displacement+horsepower+weight+acceleration, data=train, family=binomial)
+logit.prob <- predict(fit.logit,test,type="response")
+logit.pred <- ifelse(logit.prob > 0.5, 1, 0)
+table(logit.pred, test$mpg01)
+mean(logit.pred != test$mpg01)
+```
+test error는 0.127551입니다. 
+
+#### [g]
+```{r}
+train.X <- cbind(train$displacement, train$horsepower, train$weight, train$acceleration)
+test.X <- cbind(test$displacement, test$horsepower, test$weight, test$acceleration)
+knn.pred <- knn(train.X, test.X, train$mpg01, k=1)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+.
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=10)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+```{R}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=20)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=30)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=40)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=50)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=60)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=70)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=80)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=90)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=100)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=110)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=120)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=130)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=140)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=150)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=160)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=170)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=180)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=190)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+
+```{r}
+knn.pred <- knn(train.X, test.X, train$mpg01, k=200)
+table(knn.pred, test$mpg01)
+mean(knn.pred != test$mpg01)
+```
+
+k값이 변함에 따라 test error를 보면 k=30인 경우가 낫다는 것을 알 수 있습니다.
+
+
+  
